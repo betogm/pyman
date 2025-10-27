@@ -1,0 +1,28 @@
+# Este é um exemplo de requisição multipart/form-data
+
+request:
+  method: POST
+  url: "{{BASE_URL}}/post"
+
+authentication:
+  bearer_token: "{{AUTH_TOKEN}}"
+
+headers:
+  # Note que o 'boundary' é calculado automaticamente
+  Content-Type: "multipart/form-data" 
+  User-Agent: "PyMan-File-Uploader"
+
+# Para multipart, o body deve ser um dicionário (map) e não uma string.
+body:
+  # Este é um campo de formulário de texto normal
+  description: "Upload de teste com PyMan"
+  
+  # Este é outro campo de texto
+  random_noun: "{{pm.random_noun}}"
+  
+  # Este é um campo de arquivo
+  # O 'src' é relativo a este arquivo .yaml
+  # O arquivo deve estar em Example_Collection/post-request/files/data.txt
+  meu_arquivo_de_dados:
+    type: "file"
+    src: "files/data.txt"

@@ -1,0 +1,3 @@
+BASE_URL="https://httpbin.org"
+AUTH_TOKEN="dummy-token-123456"
+USER_AGENT="PyMan-CLI-Runner"

@@ -1,0 +1,6 @@
+Este é um arquivo de texto simples para ser usado no upload multipart/form-data.
+
+Ele não suporta a substituição de variáveis {{pm.random_int}}, pois é lido como-está.
+Linha 1
+Linha 2
+Fim do arquivo.
