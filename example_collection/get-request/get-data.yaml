@@ -1,0 +1,21 @@
+# Este é o novo formato YAML para a requisição GET
+# O arquivo .http correspondente pode ser removido.
+
+request:
+  method: GET
+  url: "{{BASE_URL}}/get"
+
+params:
+  param1: "valor"
+  random: "{{pm.random_int(1, 100)}}"
+
+authentication:
+  bearer_token: "{{AUTH_TOKEN}}"
+
+headers:
+  Accept: "application/json"
+  User-Agent: "{{USER_AGENT}}"
+  X-Request-Name: "Get Data"
+
+# 'body' pode ser omitido para requisições GET
+body: ""

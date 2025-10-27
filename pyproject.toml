@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyman"
+version = "0.1.0"
+authors = [
+    { name = "Huberto Gastal Mayer", email = "hubertogm@gmail.com" },
+]
+description = "PyMan - A CLI tool for executing HTTP request collections defined in YAML"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+dependencies = [
+    "requests",
+    "pyyaml",
+]
+
+[project.scripts]
+pyman = "pyman.pyman:main"

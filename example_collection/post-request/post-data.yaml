@@ -1,0 +1,23 @@
+# Este é o novo formato YAML para a requisição POST
+# O arquivo .http correspondente pode ser removido.
+
+request:
+  method: POST
+  url: "{{BASE_URL}}/post"
+
+authentication:
+  bearer_token: "{{AUTH_TOKEN}}"
+
+headers:
+  Content-Type: "application/json"
+  X-Random-Adjective: "{{pm.random_adjective}}"
+  X-Last-IP: "{{LAST_ORIGIN_IP}}"
+
+# Use o pipe | para definir um bloco de texto literal (como JSON)
+body: |
+  {
+      "title": "Instrumento Teste - {{pm.random_noun}}",
+      "abrev": "it",
+      "generated_id": {{pm.random_int(1000, 9999)}},
+      "source_ip_from_get": "{{LAST_ORIGIN_IP}}"
+  }
