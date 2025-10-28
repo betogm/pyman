@@ -1,35 +1,35 @@
-# PyMan - CLI Request Executor
+# PyMan - CLI Request Runner
 
-PyMan: A lightweight, filesystem-based HTTP request runner for the CLI. Inspired by Postman and Bruno, it executes collections defined in YAML files, supporting pre/post-run scripts (Python), environments, and multiple data types. Perfect for automating and version-controlling your API tests right alongside your code. ⚡️🐍
+PyMan: A lightweight, filesystem-based HTTP request runner for CLI. Inspired by Postman and Bruno, it executes collections defined in YAML files, supporting pre/post-run scripts (Python), environments, and multiple data types. Perfect for automating and version-controlling your API tests right alongside your code. ⚡️🐍
 
 ---
 
 ## Installation
 
-1.  Make sure you have Python 3.8+ installed.
+1.  Make sure you have Python 3.7+ installed.
 2.  Create and activate a virtual environment (`venv`).
 
-  ```console
-  # Create the environment
-  python3 -m venv venv
-  
-  # Activate the environment
-  source venv/bin/activate
-  ```
+    ```console
+    # Create the environment
+    python3 -m venv venv
+    
+    # Activate the environment
+    source venv/bin/activate
+    ```
 
-3.  Install dependencies (create a `requirements.txt` file if it doesn't exist).
+3.  Install the dependencies (create a `requirements.txt` file if it doesn't exist).
 
-  ```console
-  pip install -r requirements.txt
-  ```
+    ```console
+    pip install -r requirements.txt
+    ```
 
 ## How to Use
 
-Run `pyman.py` (inside the `pyman` folder) with the `run` command and the desired target.
+Execute `pyman.py` (inside the `pyman` folder) with the `run` command and the desired target.
 
 ### Run an entire collection
 
-To run all requests at the project root:
+To run all requests in the project root:
 
 ```console
 python pyman/pyman.py run .
@@ -54,22 +54,33 @@ PyMan expects the following file and directory structure:
 ```text
 /your-project/
 |
-|-- /tests_collection/         <-- (No spaces in name, e.g., get-users)
+|-- README.md
+|-- requirements.txt
+|-- pyproject.toml
+|
+|-- /pyman/
+|   |-- pyman.py
+|   |-- core_logic.py
+|   |-- request_parser.py
+|   |-- pyman_helpers.py
+|
+|   |-- run_20251027_103000.log   <-- Execution logs (created automatically)
+|
+|   |-- /example_collection/         <-- (Name without spaces, e.g., get-users)
 |   |-- .environment-variables       <-- Global variables (e.g., BASE_URL="https://api.com")
 |   |-- collection-pre-script.py     <-- Python script executed BEFORE EACH request
 |   |-- collection-pos-script.py     <-- Python script executed AFTER EACH request
 |   |
 |   |-- /logs/
-|   |   |-- run_20251027_103000.log   <-- Execution logs (created automatically)
 |   |
-|   |-- /example-get-request/
+|   |-- /get-request/
 |   |   |-- config.yaml          <-- Folder metadata (e.g., FOLDER_NAME="Fetch Data")
 |   |   |
-|   |   |-- get-data.yaml        <-- Request file (see format below)
+|   |   |-- get-data.yaml        <-- Request File (see format below)
 |   |   |-- get-data-pos-script.py  <-- Script AFTER this request
 |   |   |-- get-data-pre-script.py  <-- Script BEFORE this request
 |   |
-|   |-- /example-post-request/
+|   |-- /post-request/
 |       |-- ...
 |
 |-- /another-folder/
@@ -119,35 +130,90 @@ headers:
 
 body: |
   {
-  "name": "My Item",
-  "value": {{pm.random_int(1, 100)}}
+    "name": "My Item",
+    "value": {{pm.random_int(1, 100)}}
   }
 ```
 
-## Scripts (Pre and Post)
+## Pre-Requests (Chaining Requests)
 
-Scripts are Python files that have access to three global variables:
+You can chain requests using the `pre-requests` key in your `.yaml` file. This allows you to execute one or more requests before the main one, which is useful for scenarios like authentication, where you need to obtain a token before making the final call.
 
--   `env` (dict): The environment variables dictionary. You can read (`env['BASE_URL']`) and write (`env['NEW_VAR'] = 'value'`) to it.
--   `pm` (module): The `pyman_helpers` module. Use `pm.random_int()` or `pm.random_adjective()`.
--   `response` (`requests.Response`): Available **only in `pos-script` scripts**. Contains the request response object (`response.status_code`, `response.json()`).
+The requests listed in `pre-requests` are executed in order, and each one runs its full cycle (including pre and post scripts).
 
-### Example `pos-script.py`
+### Example
+
+Imagine `get-resource.yaml` needs an authentication token that is obtained by `login.yaml`.
+
+```yaml
+# /collections/auth/login.yaml
+# This request gets a token and saves it to the environment via a post-script.
+
+request:
+  method: POST
+  url: "{{BASE_URL}}/auth"
+body: |
+  {
+    "user": "admin",
+    "pass": "secret"
+  }
+```
+
+```python
+# /collections/auth/login-pos-script.py
+# Saves the token from the response to the environment.
+
+if response.status_code == 200:
+    token = response.json().get("token")
+    if token:
+        env["AUTH_TOKEN"] = token
+        print("Token saved to environment.")
+```
+
+```yaml
+# /collections/data/get-resource.yaml
+# This request uses the token obtained by the pre-request.
+
+pre-requests:
+  - ../auth/login.yaml  # Relative path to the login request
+
+request:
+  method: GET
+  url: "{{BASE_URL}}/resource"
+authentication:
+  bearer_token: "{{AUTH_TOKEN}}" # Uses the token saved in the environment
+```
+
+When `get-resource.yaml` is executed:
+1.  PyMan will first execute `login.yaml`.
+2.  The `login-pos-script.py` will run, saving the token.
+3.  Finally, the main request in `get-resource.yaml` will be executed, using the token that is now in the environment.
+
+## Scripts (Pre e Pos)
+
+Scripts são arquivos Python que têm acesso a quatro variáveis globais:
+
+-   `env` (dict): O dicionário de variáveis de ambiente. Você pode ler (`env['BASE_URL']`) e escrever (`env['NOVA_VAR'] = 'valor'`) nele.
+-   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()` ou `pm.random_adjective()`.
+-   `log` (Logger): A instância do logger da execução atual. Você pode usá-la para registrar mensagens no log do PyMan (ex: `log.info('Mensagem')`, `log.error('Erro')`).
+-   `response` (`requests.Response`): Disponível **apenas em scripts `pos-script`**. Contém o objeto de resposta da requisição (`response.status_code`, `response.json()`).
+
+### Example of `pos-script.py`
 
 ```python
 # my-request-pos-script.py
 
 try:
-  if response.status_code == 200:
-    print("POS Script: Request OK!")
-    data = response.json()
-    
-    # Extract an ID from the response and save it to the environment
-    if 'id' in data:
-      env['LAST_CREATED_ID'] = data['id']
-      print(f"ID saved to environment: {env['LAST_CREATED_ID']}")
-      
+    if response.status_code == 200:
+        print("POS script: Request OK!")
+        data = response.json()
+        
+        # Extracts an ID from the response and saves it to the environment
+        if 'id' in data:
+            env['LAST_CREATED_ID'] = data['id']
+            print(f"ID saved to environment: {env['LAST_CREATED_ID']}")
+            
 except Exception as e:
-  print(f"Error in POS script: {e}")
+    print(f"Error in POS script: {e}")
 
 ```

@@ -114,12 +114,11 @@ def load_folder_config(folder_path):
 
 # --- Script Execution (Pre/Post) ---
 
-def execute_script(script_path, env, pm, response=None):
+def execute_script(script_path, env, pm, log, response=None):
     """
     Executes a Python script (pre or post) if it exists.
-    Injects 'env', 'pm', and 'response' (if available) into the script's global scope.
+    Injects 'env', 'pm', 'log', and 'response' (if available) into the script's global scope.
     """
-    log = logging.getLogger('pyman')
     if not os.path.exists(script_path):
         log.debug(f"Script not found, skipping: {script_path}")
         return
@@ -129,6 +128,7 @@ def execute_script(script_path, env, pm, response=None):
     script_globals = {
         'env': env,
         'pm': pm,
+        'log': log,
         'response': response # Will be None for pre-scripts
     }
     
@@ -177,20 +177,12 @@ def substitute_variables(text, env, pm):
 
 # --- Request Execution ---
 
-def execute_request(request_file_path, env, pm):
+def execute_request(request_file_path, env, pm, parsed_request):
     """
-    Parses, prepares, and executes a single HTTP request.
+    Prepares and executes a single HTTP request based on a pre-parsed structure.
     """
     log = logging.getLogger('pyman')
-    log.info("-" * 50)
-    log.info(f"Executing request: {request_file_path}")
-    request_dir = os.path.dirname(request_file_path) # For relative file paths
-
-    try:
-        parsed_request = parse_request_file(request_file_path)
-    except Exception as e:
-        log.error(f"Failed to parse file {request_file_path}: {e}", exc_info=True)
-        return None
+    request_dir = os.path.dirname(request_file_path)
 
     # --- 1. Substitute variables (except in the body, which is handled later) ---
     try:
@@ -224,64 +216,53 @@ def execute_request(request_file_path, env, pm):
         return None
 
     # --- 2. Prepare Payloads (data, files) and Headers ---
-    data_payload = None   # For 'data=' (raw, urlencoded)
-    files_payload = None  # For 'files=' (multipart)
-    auth_tuple = None     # For 'auth=' (basic auth)
+    data_payload = None
+    files_payload = None
+    auth_tuple = None
     
-    # Check if it is multipart
     content_type = headers.get('Content-Type', '')
     is_multipart = 'multipart/form-data' in content_type
 
     if isinstance(body, str):
-        # Body is 'raw' (JSON, XML, etc.)
         data_payload = substitute_variables(body, env, pm).encode('utf-8')
         
     elif isinstance(body, dict):
         if is_multipart and method in ('POST', 'PUT', 'PATCH'):
-            # Body is multipart/form-data
             log.info("Processing body as multipart/form-data")
-            data_fields = {}  # Text fields
-            file_fields = {}  # File fields
+            data_fields = {}
+            file_fields = {}
 
             for key, value in body.items():
                 if isinstance(value, dict) and value.get('type') == 'file':
-                    # It's a file
                     src = value.get('src')
                     if not src:
                         log.warning(f"File field '{key}' has no 'src'. Skipping.")
                         continue
                     
                     src_subbed = substitute_variables(src, env, pm)
-                    
-                    # Allows absolute or relative paths to the .yaml file
                     file_path = src_subbed if os.path.isabs(src_subbed) else os.path.join(request_dir, src_subbed)
                     
                     if not os.path.exists(file_path):
                         log.error(f"File not found for '{key}': {file_path}")
-                        continue # Skip this file
+                        continue
                     
                     try:
                         file_name = os.path.basename(file_path)
-                        # 'rb' is crucial for files
-                        file_fields[key] = (file_name, open(file_path, 'rb'), 'application/octet-stream') # Add generic MIME type
+                        file_fields[key] = (file_name, open(file_path, 'rb'), 'application/octet-stream')
                         log.info(f"Attaching file: '{key}' -> {file_path}")
                     except Exception as e:
                         log.error(f"Could not open file '{file_path}': {e}")
                 else:
-                    # It's a normal form field
                     data_fields[key] = substitute_variables(str(value), env, pm)
             
-            data_payload = data_fields   # 'requests' uses 'data' for text fields in multipart
-            files_payload = file_fields # 'requests' uses 'files' for files
+            data_payload = data_fields
+            files_payload = file_fields
             
-            # Let 'requests' set the Content-Type and boundary
             if 'Content-Type' in headers:
                 log.debug("Removing 'Content-Type' header; 'requests' will handle the boundary.")
                 del headers['Content-Type']
                 
         else:
-            # Body is a dict, but not multipart (assume x-www-form-urlencoded)
-            # 'requests' sends this as 'application/x-www-form-urlencoded' by default
             data_payload = {k: substitute_variables(str(v), env, pm) for k, v in body.items()}
 
     # --- 3. Authentication ---
@@ -290,7 +271,6 @@ def execute_request(request_file_path, env, pm):
         log.debug("Applying Bearer Token authentication")
         
     elif 'Basic Auth' in auth:
-        # 'requests' handles Base64 encoding
         auth_tuple = (
             substitute_variables(auth.get('Basic Auth', {}).get('username'), env, pm), 
             substitute_variables(auth.get('Basic Auth', {}).get('password'), env, pm)
@@ -307,15 +287,14 @@ def execute_request(request_file_path, env, pm):
         if files_payload:
             log.debug(f"FILES: {list(files_payload.keys())}")
 
-
         response = requests.request(
             method=method,
             url=url,
             headers=headers,
-            data=data_payload,    # Used for raw, urlencoded, and multipart text fields
-            files=files_payload,   # Used for multipart files
-            auth=auth_tuple,       # Used for Basic Auth
-            timeout=60             # 60-second timeout
+            data=data_payload,
+            files=files_payload,
+            auth=auth_tuple,
+            timeout=60
         )
 
         log.info(f"STATUS: {response.status_code}")
@@ -323,27 +302,97 @@ def execute_request(request_file_path, env, pm):
         
     except requests.exceptions.RequestException as e:
         log.error(f"Error in request: {e}")
-        return None # Returns None if the request fails
+        return None
     finally:
         # --- 5. Cleanup (Close open files) ---
         if files_payload:
             log.debug(f"Closing {len(files_payload)} files.")
             for _, file_tuple in files_payload.items():
-                # file_tuple = (filename, file_object, mimetype)
-                file_tuple[1].close() # file_tuple[1] is the 'open()' object
+                file_tuple[1].close()
 
     return response
+
+# --- Request Processing ---
+
+def process_request_file(req_file, env, pm, collection_root, summary, executed_set):
+    """
+    Processes a single request file, including its pre-requests and scripts.
+    """
+    log = logging.getLogger('pyman')
+    if req_file in executed_set:
+        log.debug(f"Skipping already executed request: {req_file}")
+        return
+    
+    log.info("-" * 50)
+    log.info(f"Processing request file: {req_file}")
+    executed_set.add(req_file)
+
+    try:
+        parsed_request = parse_request_file(req_file)
+    except Exception as e:
+        log.error(f"Failed to parse file {req_file}: {e}", exc_info=True)
+        summary['failure'] += 1
+        return
+
+    req_dir = os.path.dirname(req_file)
+
+    # 1. Execute Pre-requests (recursively)
+    for pre_req_path in parsed_request.get('pre-requests', []):
+        # Paths are relative to the current request file
+        abs_pre_req_path = os.path.abspath(os.path.join(req_dir, pre_req_path))
+        if not os.path.exists(abs_pre_req_path):
+            log.error(f"Pre-request file not found: {abs_pre_req_path}")
+            summary['failure'] += 1
+            continue
+        
+        log.info(f"Found pre-request: {pre_req_path}")
+        process_request_file(abs_pre_req_path, env, pm, collection_root, summary, executed_set)
+
+    # --- EXECUTION ORDER for the current request ---
+    req_name = os.path.basename(req_file)
+    req_base_name = os.path.splitext(req_name)[0]
+
+    collection_pre_script = os.path.join(collection_root, 'collection-pre-script.py')
+    collection_pos_script = os.path.join(collection_root, 'collection-pos-script.py')
+    req_pre_script = os.path.join(req_dir, f"{req_base_name}-pre-script.py")
+    req_pos_script = os.path.join(req_dir, f"{req_base_name}-pos-script.py")
+
+    try:
+        # 2. Collection Pre-script
+        execute_script(collection_pre_script, env, pm, log)
+        
+        # 3. Request Pre-script
+        execute_script(req_pre_script, env, pm, log)
+
+        # 4. The Request
+        log.info(f"Executing main request: {req_name}")
+        response = execute_request(req_file, env, pm, parsed_request)
+
+        # 5. Request Post-script
+        execute_script(req_pos_script, env, pm, log, response=response)
+
+        # 6. Collection Post-script
+        execute_script(collection_pos_script, env, pm, log, response=response)
+
+        if response is not None and response.status_code < 400:
+            summary['success'] += 1
+        else:
+            summary['failure'] += 1
+
+    except Exception as e:
+        log.error(f"Unexpected error during the cycle of {req_name}: {e}", exc_info=True)
+        summary['failure'] += 1
+
 
 # --- Main Execution Loop ---
 
 def run_collection(target_path, collection_root, request_files_to_run, log, pm):
     """
-    The main loop that orchestrates the execution of the collection and scripts.
+    The main loop that orchestrates the execution of the collection.
     """
     log.info(f"Starting execution. Collection root: {collection_root}")
     log.info(f"Target: {target_path}")
 
-    # 1. Load global environment
     try:
         env = load_environment(collection_root)
         log.info(f"Global environment variables loaded: {len(env)} keys.")
@@ -351,53 +400,12 @@ def run_collection(target_path, collection_root, request_files_to_run, log, pm):
         log.error(f"Critical failure loading environment: {e}")
         return
 
-    # 2. Define collection script paths
-    collection_pre_script = os.path.join(collection_root, 'collection-pre-script.py')
-    collection_pos_script = os.path.join(collection_root, 'collection-pos-script.py')
-
-    # 3. Iterate over request files
     summary = {'total': len(request_files_to_run), 'success': 0, 'failure': 0}
+    executed_set = set() # To avoid re-executing the same request file
 
     for req_file in request_files_to_run:
-        req_name = os.path.basename(req_file)
-        req_base_name = os.path.splitext(req_name)[0]
-        req_dir = os.path.dirname(req_file)
+        process_request_file(req_file, env, pm, collection_root, summary, executed_set)
 
-        # Define request script paths
-        req_pre_script = os.path.join(req_dir, f"{req_base_name}-pre-script.py")
-        req_pos_script = os.path.join(req_dir, f"{req_base_name}-pos-script.py")
-
-        try:
-            # --- EXECUTION ORDER ---
-
-            # 1. Collection Pre-script
-            execute_script(collection_pre_script, env, pm)
-            
-            # 2. Request Pre-script
-            execute_script(req_pre_script, env, pm)
-
-            # 3. The Request
-            response = execute_request(req_file, env, pm)
-
-            # 4. Request Post-script
-            # Passes the 'response', even if it is None (in case of failure)
-            execute_script(req_pos_script, env, pm, response=response)
-
-            # 5. Collection Post-script
-            execute_script(collection_pos_script, env, pm, response=response)
-
-            # --- End of Order ---
-
-            if response is not None and response.status_code < 400:
-                summary['success'] += 1
-            else:
-                summary['failure'] += 1
-
-        except Exception as e:
-            log.error(f"Unexpected error during the cycle of {req_name}: {e}", exc_info=True)
-            summary['failure'] += 1
-
-    # --- End of Loop ---
     log.info("-" * 50)
     log.info("Execution finished.")
     log.info(f"Summary: {summary['total']} total, {summary['success']} success, {summary['failure']} failure.")
