@@ -50,7 +50,9 @@ def parse_request_file(file_path):
 
     # 3. Authentication
     # Normalizes to the format expected by core_logic
-    auth_data = data.get('authentication', {})
+    auth_data = data.get('authentication')
+    if auth_data is None:
+        auth_data = {}
     if 'bearer_token' in auth_data:
         parsed['auth']['Bearer Token'] = auth_data['bearer_token']
     if 'basic_auth' in auth_data:
