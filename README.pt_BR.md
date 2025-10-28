@@ -155,7 +155,7 @@ body: |
 if response.status_code == 200:
     token = response.json().get("token")
     if token:
-        env["AUTH_TOKEN"] = token
+        environment_vars["AUTH_TOKEN"] = token
         print("Token salvo no ambiente.")
 ```
 
@@ -182,7 +182,7 @@ Quando `get-resource.yaml` for executado:
 
 Scripts são arquivos Python que têm acesso a três variáveis globais:
 
--   `env` (dict): O dicionário de variáveis de ambiente. Você pode ler (`env['BASE_URL']`) e escrever (`env['NOVA_VAR'] = 'valor'`) nele.
+-   `environment_vars` (dict): O dicionário de variáveis de ambiente. Você pode ler (`environment_vars['BASE_URL']`) e escrever (`environment_vars['NOVA_VAR'] = 'valor'`) nele.
 -   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()` ou `pm.random_adjective()`.
 -   `response` (`requests.Response`): Disponível **apenas em scripts `pos-script`**. Contém o objeto de resposta da requisição (`response.status_code`, `response.json()`).
 
@@ -198,8 +198,8 @@ try:
         
         # Extrai um ID da resposta e salva no ambiente
         if 'id' in data:
-            env['LAST_ID_CRIADO'] = data['id']
-            print(f"ID salvo no ambiente: {env['LAST_ID_CRIADO']}")
+            environment_vars['LAST_ID_CRIADO'] = data['id']
+            print(f"ID salvo no ambiente: {environment_vars['LAST_ID_CRIADO']}")
             
 except Exception as e:
     print(f"Erro no script POS: {e}")
