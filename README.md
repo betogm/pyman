@@ -194,8 +194,12 @@ When `get-resource.yaml` is executed:
 Scripts são arquivos Python que têm acesso a quatro variáveis globais:
 
 -   `environment_vars` (dict): O dicionário de variáveis de ambiente. Você pode ler (`environment_vars['BASE_URL']`) e escrever (`environment_vars['NOVA_VAR'] = 'valor'`) nele. **Alterações feitas neste dicionário serão automaticamente salvas de volta no arquivo `.environment-variables` após a execução do script.**
--   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()` ou `pm.random_adjective()`.
+-   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()`, `pm.random_adjective()`, ou `pm.test()`.
 -   `log` (Logger): A instância do logger da execução atual. Você pode usá-la para registrar mensagens no log do PyMan (ex: `log.info('Mensagem')`, `log.error('Erro')`).
+-   `pm.test(name, condition_func)`: Uma função para realizar asserções nos seus scripts, similar ao `pm.test()` do Postman. `name` é o nome do teste (string) e `condition_func` é uma função lambda ou regular que contém a lógica de asserção. Se a asserção falhar, o teste será marcado como `FAILED` no log. Exemplo:
+    ```python
+    pm.test("Status code is 200", lambda: assert response.status_code == 200)
+    ```
 -   `response` (`requests.Response`): Disponível **apenas em scripts `pos-script`**. Contém o objeto de resposta da requisição (`response.status_code`, `response.json()`).
 
 ### Example of `pos-script.py`

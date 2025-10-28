@@ -22,8 +22,8 @@ class PyManHelpers:
     into pre/post scripts and used in variable substitutions.
     """
     
-    def __init__(self):
-        # A place to store dynamic variables if needed (like pm.variables)
+    def __init__(self, log):
+        self.log = log
         self._variables = {}
 
     def set_variable(self, key, value):
@@ -33,6 +33,18 @@ class PyManHelpers:
     def get_variable(self, key):
         """Gets a dynamic variable."""
         return self._variables.get(key)
+
+    def test(self, name, condition_func):
+        """
+        Emulates Postman's pm.test().
+        Executes an assertion function within a try/except block.
+        """
+        try:
+            condition_func()
+            self.log.info(f"  PASSED: {name}")
+        except AssertionError as e:
+            self.log.error(f"  FAILED: {name} | {e}")
+            raise # Re-raise the exception for the main try/except to catch
 
     # --- Dynamic Functions ({{pm.helper()}}) ---
 
