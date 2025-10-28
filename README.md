@@ -166,7 +166,7 @@ body: |
 if response.status_code == 200:
     token = response.json().get("token")
     if token:
-        env["AUTH_TOKEN"] = token
+        environment_vars["AUTH_TOKEN"] = token
         print("Token saved to environment.")
 ```
 
@@ -189,19 +189,19 @@ When `get-resource.yaml` is executed:
 2.  The `login-pos-script.py` will run, saving the token.
 3.  Finally, the main request in `get-resource.yaml` will be executed, using the token that is now in the environment.
 
-## Scripts (Pre e Pos)
+## Scripts (Pre and Post)
 
-Scripts são arquivos Python que têm acesso a quatro variáveis globais:
+Scripts are Python files that have access to four global variables:
 
--   `environment_vars` (dict): O dicionário de variáveis de ambiente. Você pode ler (`environment_vars['BASE_URL']`) e escrever (`environment_vars['NOVA_VAR'] = 'valor'`) nele. **Alterações feitas neste dicionário serão automaticamente salvas de volta no arquivo `.environment-variables` após a execução do script.**
--   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()`, `pm.random_adjective()`, ou `pm.test()`.
--   `log` (Logger): A instância do logger da execução atual. Você pode usá-la para registrar mensagens no log do PyMan (ex: `log.info('Mensagem')`, `log.error('Erro')`).
--   `pm.test(name, condition_func)`: Uma função para realizar asserções nos seus scripts, similar ao `pm.test()` do Postman. `name` é o nome do teste (string) e `condition_func` é uma função lambda ou regular que contém a lógica de asserção. Se a asserção falhar, o teste será marcado como `FAILED` no log. Exemplo:
+-   `environment_vars` (dict): The environment variables dictionary. You can read from it (`environment_vars['BASE_URL']`) and write to it (`environment_vars['NEW_VAR'] = 'value'`). **Changes made to this dictionary will be automatically saved back to the `.environment-variables` file after the script execution.**
+-   `pm` (module): The `pyman_helpers` module. Use `pm.random_int()`, `pm.random_adjective()`, or `pm.test()`.
+-   `log` (Logger): The logger instance for the current execution. You can use it to log messages to the PyMan log (e.g., `log.info('Message')`, `log.error('Error')`).
+-   `pm.test(name, condition_func)`: A function to perform assertions in your scripts, similar to Postman's `pm.test()`. `name` is the test name (string) and `condition_func` is a lambda or regular function containing the assertion logic. If the assertion fails, the test will be marked as `FAILED` in the log. Example:
     ```python
     pm.test("Status code is 200", lambda: assert response.status_code == 200)
     ```
-    **Nota:** Se uma asserção falhar, o `pm.test()` registrará o erro, mas não interromperá a execução do script nem gerará um traceback completo.
--   `response` (`requests.Response`): Disponível **apenas em scripts `pos-script`**. Contém o objeto de resposta da requisição (`response.status_code`, `response.json()`).
+    **Note:** If an assertion fails, `pm.test()` will log the error but will not stop script execution or raise a full traceback.
+-   `response` (`requests.Response`): Available **only in post-scripts**. Contains the request's response object (`response.status_code`, `response.json()`).
 
 ### Example of `pos-script.py`
 
@@ -210,15 +210,15 @@ Scripts são arquivos Python que têm acesso a quatro variáveis globais:
 
 try:
     if response.status_code == 200:
-        print("POS script: Request OK!")
+        log.info("POS script: Request OK!")
         data = response.json()
         
         # Extracts an ID from the response and saves it to the environment
         if 'id' in data:
-            env['LAST_CREATED_ID'] = data['id']
-            print(f"ID saved to environment: {env['LAST_CREATED_ID']}")
+            environment_vars['LAST_CREATED_ID'] = data['id']
+            log.info(f"ID saved to environment: {environment_vars['LAST_CREATED_ID']}")
             
 except Exception as e:
-    print(f"Error in POS script: {e}")
+    log.error(f"Error in POS script: {e}")
 
 ```
