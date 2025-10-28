@@ -21,7 +21,8 @@ def parse_request_file(file_path):
         'params': {},
         'auth': {},
         'headers': {},
-        'body': ''
+        'body': '',
+        'pre-requests': []
     }
 
     try:
@@ -61,5 +62,8 @@ def parse_request_file(file_path):
     # 5. Body
     # YAML with | (literal block) preserves the format, including line breaks
     parsed['body'] = data.get('body', '')
+
+    # 6. Pre-requests
+    parsed['pre-requests'] = data.get('pre-requests', [])
 
     return parsed

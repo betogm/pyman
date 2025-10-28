@@ -124,6 +124,60 @@ body: |
   }
 ```
 
+## Pre-Requests (Encadeamento de Requisições)
+
+Você pode encadear requisições usando a chave `pre-requests` no seu arquivo `.yaml`. Isso permite executar uma ou mais requisições antes da principal, o que é útil para cenários como autenticação, onde você precisa obter um token antes de fazer a chamada final.
+
+As requisições listadas em `pre-requests` são executadas em ordem, e cada uma executa seu ciclo completo (incluindo pre e pos scripts).
+
+### Exemplo
+
+Imagine que `get-resource.yaml` precisa de um token de autenticação que é obtido por `login.yaml`.
+
+```yaml
+# /collections/auth/login.yaml
+# Esta requisição obtém um token e o salva no ambiente através de um pos-script.
+
+request:
+  method: POST
+  url: "{{BASE_URL}}/auth"
+body: |
+  {
+    "user": "admin",
+    "pass": "secret"
+  }
+```
+
+```python
+# /collections/auth/login-pos-script.py
+# Salva o token da resposta no ambiente.
+
+if response.status_code == 200:
+    token = response.json().get("token")
+    if token:
+        env["AUTH_TOKEN"] = token
+        print("Token salvo no ambiente.")
+```
+
+```yaml
+# /collections/data/get-resource.yaml
+# Esta requisição usa o token obtido pela pre-request.
+
+pre-requests:
+  - ../auth/login.yaml  # Caminho relativo para a requisição de login
+
+request:
+  method: GET
+  url: "{{BASE_URL}}/resource"
+authentication:
+  bearer_token: "{{AUTH_TOKEN}}" # Usa o token salvo no ambiente
+```
+
+Quando `get-resource.yaml` for executado:
+1.  O PyMan primeiro executará `login.yaml`.
+2.  O `login-pos-script.py` será executado, salvando o token.
+3.  Finalmente, a requisição principal em `get-resource.yaml` será executada, usando o token que agora está no ambiente.
+
 ## Scripts (Pre e Pos)
 
 Scripts são arquivos Python que têm acesso a três variáveis globais:
