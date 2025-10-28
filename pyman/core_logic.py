@@ -161,7 +161,7 @@ def execute_script(script_path, environment_vars, pm, log, response=None):
             return True # Indicates changes were made
 
     except Exception as e:
-        log.error(f"Error executing script {script_path}: {e}", exc_info=True)
+        log.error(f"Error executing script {script_path}: {e}")
 
     return False # No changes made
 
@@ -379,7 +379,7 @@ def process_request_file(req_file, environment_vars, pm, collection_root, summar
             summary['failure'] += 1
 
     except Exception as e:
-        log.error(f"Unexpected error during the cycle of {req_name}: {e}", exc_info=True)
+        log.error(f"Unexpected error during the cycle of {req_name}: {e}")
         summary['failure'] += 1
 
 # --- Main Execution Loop ---

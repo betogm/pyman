@@ -200,6 +200,7 @@ Scripts são arquivos Python que têm acesso a quatro variáveis globais:
     ```python
     pm.test("Status code is 200", lambda: assert response.status_code == 200)
     ```
+    **Nota:** Se uma asserção falhar, o `pm.test()` registrará o erro, mas não interromperá a execução do script nem gerará um traceback completo.
 -   `response` (`requests.Response`): Disponível **apenas em scripts `pos-script`**. Contém o objeto de resposta da requisição (`response.status_code`, `response.json()`).
 
 ### Example of `pos-script.py`

@@ -44,7 +44,6 @@ class PyManHelpers:
             self.log.info(f"  PASSED: {name}")
         except AssertionError as e:
             self.log.error(f"  FAILED: {name} | {e}")
-            raise # Re-raise the exception for the main try/except to catch
 
     # --- Dynamic Functions ({{pm.helper()}}) ---
 
