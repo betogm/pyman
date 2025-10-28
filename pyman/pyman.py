@@ -79,7 +79,7 @@ def main():
     # 2. Instantiate Helpers
     # The 'pm' module is injected into the scripts
     try:
-        pm = PyManHelpers()
+        pm = PyManHelpers(log)
     except Exception as e:
         log.error(f"Error instantiating PyManHelpers: {e}")
         sys.exit(1)
