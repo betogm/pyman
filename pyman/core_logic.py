@@ -81,6 +81,20 @@ def load_environment(collection_root):
     
     return env
 
+def write_environment_file(collection_root, environment_vars):
+    """
+    Writes the environment dictionary back to the .environment-variables file.
+    """
+    log = logging.getLogger('pyman')
+    env_file = os.path.join(collection_root, '.environment-variables')
+    try:
+        with open(env_file, 'w', encoding='utf-8') as f:
+            for key, value in environment_vars.items():
+                f.write(f'{key}="{value}"\n')
+        log.debug(f"Environment variables successfully written to {env_file}")
+    except Exception as e:
+        log.error(f"Error writing to .environment-variables file: {e}")
+
 def load_folder_config(folder_path):
     """
     Loads the config.yaml file from a subdirectory.
@@ -114,10 +128,10 @@ def load_folder_config(folder_path):
 
 # --- Script Execution (Pre/Post) ---
 
-def execute_script(script_path, env, pm, log, response=None):
+def execute_script(script_path, environment_vars, pm, log, response=None):
     """
     Executes a Python script (pre or post) if it exists.
-    Injects 'env', 'pm', 'log', and 'response' (if available) into the script's global scope.
+    Injects 'environment_vars', 'pm', 'log', and 'response' (if available) into the script's global scope.
     """
     if not os.path.exists(script_path):
         log.debug(f"Script not found, skipping: {script_path}")
@@ -125,8 +139,11 @@ def execute_script(script_path, env, pm, log, response=None):
 
     log.info(f"Executing script: {script_path}")
     
+    # Deep copy to detect changes
+    before_env = environment_vars.copy()
+
     script_globals = {
-        'env': env,
+        'environment_vars': environment_vars,
         'pm': pm,
         'log': log,
         'response': response # Will be None for pre-scripts
@@ -136,16 +153,21 @@ def execute_script(script_path, env, pm, log, response=None):
         with open(script_path, 'r', encoding='utf-8') as f:
             script_code = f.read()
         
-        # Compiles and executes the code in the defined scope
         exec(compile(script_code, script_path, 'exec'), script_globals)
-        
+
+        # Check for changes and return a flag
+        if environment_vars != before_env:
+            log.info("Environment variables were modified by the script.")
+            return True # Indicates changes were made
+
     except Exception as e:
         log.error(f"Error executing script {script_path}: {e}", exc_info=True)
-        # Allows execution to continue, but logs the error
+
+    return False # No changes made
 
 # --- Substitution Logic ---
 
-def substitute_variables(text, env, pm):
+def substitute_variables(text, environment_vars, pm):
     """
     Substitutes {{var_name}} and {{pm.helper()}} variables in a string.
     """
@@ -155,21 +177,19 @@ def substitute_variables(text, env, pm):
     # Pattern 1: {{var_name}} (environment variables)
     def replacer_env(match):
         var_name = match.group(1).strip()
-        return str(env.get(var_name, match.group(0))) # Returns the original if not found
+        return str(environment_vars.get(var_name, match.group(0))) # Returns the original if not found
 
     text = re.sub(r'\{\{\s*([a-zA-Z0-9_]+)\s*\}\}', replacer_env, text)
 
     # Pattern 2: {{pm.helper(...)}} (helper functions)
     def replacer_pm(match):
-        func_call_str = match.group(1).strip() # Ex: "pm.random_int(1, 10)"
+        func_call_str = match.group(1).strip()
         try:
-            # Evaluates the expression 'pm.random_int(1, 10)'
-            # 'pm' is the imported module
             result = eval(func_call_str, {'pm': pm})
             return str(result)
         except Exception as e:
             logging.getLogger('pyman').warning(f"Error evaluating helper '{{{{{func_call_str}}}}}': {e}")
-            return match.group(0) # Returns the original if it fails
+            return match.group(0)
 
     text = re.sub(r'\{\{\s*(pm\.[a-zA-Z0-9_.]+\(.*\))\s*\}\}', replacer_pm, text)
     
@@ -177,21 +197,20 @@ def substitute_variables(text, env, pm):
 
 # --- Request Execution ---
 
-def execute_request(request_file_path, env, pm, parsed_request):
+def execute_request(request_file_path, environment_vars, pm, parsed_request):
     """
     Prepares and executes a single HTTP request based on a pre-parsed structure.
     """
     log = logging.getLogger('pyman')
     request_dir = os.path.dirname(request_file_path)
 
-    # --- 1. Substitute variables (except in the body, which is handled later) ---
     try:
-        url = substitute_variables(parsed_request['url'], env, pm)
+        url = substitute_variables(parsed_request['url'], environment_vars, pm)
         method = parsed_request['method'].upper()
 
         params = {}
         for k, v in parsed_request['params'].items():
-            params[substitute_variables(k, env, pm)] = substitute_variables(v, env, pm)
+            params[substitute_variables(k, environment_vars, pm)] = substitute_variables(v, environment_vars, pm)
 
         if params:
             query_string = urlencode(params)
@@ -203,19 +222,18 @@ def execute_request(request_file_path, env, pm, parsed_request):
         
         headers = {}
         for k, v in parsed_request['headers'].items():
-            headers[substitute_variables(k, env, pm)] = substitute_variables(v, env, pm)
+            headers[substitute_variables(k, environment_vars, pm)] = substitute_variables(v, environment_vars, pm)
             
         auth = {}
         for k, v in parsed_request['auth'].items():
-            auth[k] = substitute_variables(v, env, pm)
+            auth[k] = substitute_variables(v, environment_vars, pm)
 
-        body = parsed_request['body'] # Gets the body (can be str, dict, or None)
+        body = parsed_request['body']
 
     except Exception as e:
         log.error(f"Error substituting variables (URL/Headers/Auth): {e}", exc_info=True)
         return None
 
-    # --- 2. Prepare Payloads (data, files) and Headers ---
     data_payload = None
     files_payload = None
     auth_tuple = None
@@ -224,7 +242,7 @@ def execute_request(request_file_path, env, pm, parsed_request):
     is_multipart = 'multipart/form-data' in content_type
 
     if isinstance(body, str):
-        data_payload = substitute_variables(body, env, pm).encode('utf-8')
+        data_payload = substitute_variables(body, environment_vars, pm).encode('utf-8')
         
     elif isinstance(body, dict):
         if is_multipart and method in ('POST', 'PUT', 'PATCH'):
@@ -239,7 +257,7 @@ def execute_request(request_file_path, env, pm, parsed_request):
                         log.warning(f"File field '{key}' has no 'src'. Skipping.")
                         continue
                     
-                    src_subbed = substitute_variables(src, env, pm)
+                    src_subbed = substitute_variables(src, environment_vars, pm)
                     file_path = src_subbed if os.path.isabs(src_subbed) else os.path.join(request_dir, src_subbed)
                     
                     if not os.path.exists(file_path):
@@ -253,40 +271,29 @@ def execute_request(request_file_path, env, pm, parsed_request):
                     except Exception as e:
                         log.error(f"Could not open file '{file_path}': {e}")
                 else:
-                    data_fields[key] = substitute_variables(str(value), env, pm)
+                    data_fields[key] = substitute_variables(str(value), environment_vars, pm)
             
             data_payload = data_fields
             files_payload = file_fields
             
             if 'Content-Type' in headers:
-                log.debug("Removing 'Content-Type' header; 'requests' will handle the boundary.")
                 del headers['Content-Type']
                 
         else:
-            data_payload = {k: substitute_variables(str(v), env, pm) for k, v in body.items()}
+            data_payload = {k: substitute_variables(str(v), environment_vars, pm) for k, v in body.items()}
 
-    # --- 3. Authentication ---
     if 'Bearer Token' in auth:
         headers['Authorization'] = f"Bearer {auth['Bearer Token']}"
-        log.debug("Applying Bearer Token authentication")
         
     elif 'Basic Auth' in auth:
         auth_tuple = (
-            substitute_variables(auth.get('Basic Auth', {}).get('username'), env, pm), 
-            substitute_variables(auth.get('Basic Auth', {}).get('password'), env, pm)
+            substitute_variables(auth.get('Basic Auth', {}).get('username'), environment_vars, pm), 
+            substitute_variables(auth.get('Basic Auth', {}).get('password'), environment_vars, pm)
         )
-        log.debug("Applying Basic Auth authentication")
 
-    # --- 4. Make the request ---
     response = None
     try:
         log.info(f"Dispatching {method} to: {url}")
-        log.debug(f"HEADERS: {headers}")
-        if data_payload:
-            log.debug(f"DATA: {data_payload}")
-        if files_payload:
-            log.debug(f"FILES: {list(files_payload.keys())}")
-
         response = requests.request(
             method=method,
             url=url,
@@ -296,17 +303,13 @@ def execute_request(request_file_path, env, pm, parsed_request):
             auth=auth_tuple,
             timeout=60
         )
-
         log.info(f"STATUS: {response.status_code}")
-        log.debug(f"HEADERS (Response): {response.headers}")
         
     except requests.exceptions.RequestException as e:
         log.error(f"Error in request: {e}")
         return None
     finally:
-        # --- 5. Cleanup (Close open files) ---
         if files_payload:
-            log.debug(f"Closing {len(files_payload)} files.")
             for _, file_tuple in files_payload.items():
                 file_tuple[1].close()
 
@@ -314,7 +317,7 @@ def execute_request(request_file_path, env, pm, parsed_request):
 
 # --- Request Processing ---
 
-def process_request_file(req_file, env, pm, collection_root, summary, executed_set):
+def process_request_file(req_file, environment_vars, pm, collection_root, summary, executed_set):
     """
     Processes a single request file, including its pre-requests and scripts.
     """
@@ -336,9 +339,7 @@ def process_request_file(req_file, env, pm, collection_root, summary, executed_s
 
     req_dir = os.path.dirname(req_file)
 
-    # 1. Execute Pre-requests (recursively)
     for pre_req_path in parsed_request.get('pre-requests', []):
-        # Paths are relative to the current request file
         abs_pre_req_path = os.path.abspath(os.path.join(req_dir, pre_req_path))
         if not os.path.exists(abs_pre_req_path):
             log.error(f"Pre-request file not found: {abs_pre_req_path}")
@@ -346,9 +347,8 @@ def process_request_file(req_file, env, pm, collection_root, summary, executed_s
             continue
         
         log.info(f"Found pre-request: {pre_req_path}")
-        process_request_file(abs_pre_req_path, env, pm, collection_root, summary, executed_set)
+        process_request_file(abs_pre_req_path, environment_vars, pm, collection_root, summary, executed_set)
 
-    # --- EXECUTION ORDER for the current request ---
     req_name = os.path.basename(req_file)
     req_base_name = os.path.splitext(req_name)[0]
 
@@ -358,21 +358,20 @@ def process_request_file(req_file, env, pm, collection_root, summary, executed_s
     req_pos_script = os.path.join(req_dir, f"{req_base_name}-pos-script.py")
 
     try:
-        # 2. Collection Pre-script
-        execute_script(collection_pre_script, env, pm, log)
+        if execute_script(collection_pre_script, environment_vars, pm, log):
+            write_environment_file(collection_root, environment_vars)
         
-        # 3. Request Pre-script
-        execute_script(req_pre_script, env, pm, log)
+        if execute_script(req_pre_script, environment_vars, pm, log):
+            write_environment_file(collection_root, environment_vars)
 
-        # 4. The Request
         log.info(f"Executing main request: {req_name}")
-        response = execute_request(req_file, env, pm, parsed_request)
+        response = execute_request(req_file, environment_vars, pm, parsed_request)
 
-        # 5. Request Post-script
-        execute_script(req_pos_script, env, pm, log, response=response)
+        if execute_script(req_pos_script, environment_vars, pm, log, response=response):
+            write_environment_file(collection_root, environment_vars)
 
-        # 6. Collection Post-script
-        execute_script(collection_pos_script, env, pm, log, response=response)
+        if execute_script(collection_pos_script, environment_vars, pm, log, response=response):
+            write_environment_file(collection_root, environment_vars)
 
         if response is not None and response.status_code < 400:
             summary['success'] += 1
@@ -382,7 +381,6 @@ def process_request_file(req_file, env, pm, collection_root, summary, executed_s
     except Exception as e:
         log.error(f"Unexpected error during the cycle of {req_name}: {e}", exc_info=True)
         summary['failure'] += 1
-
 
 # --- Main Execution Loop ---
 
@@ -394,17 +392,17 @@ def run_collection(target_path, collection_root, request_files_to_run, log, pm):
     log.info(f"Target: {target_path}")
 
     try:
-        env = load_environment(collection_root)
-        log.info(f"Global environment variables loaded: {len(env)} keys.")
+        environment_vars = load_environment(collection_root)
+        log.info(f"Global environment variables loaded: {len(environment_vars)} keys.")
     except Exception as e:
         log.error(f"Critical failure loading environment: {e}")
         return
 
     summary = {'total': len(request_files_to_run), 'success': 0, 'failure': 0}
-    executed_set = set() # To avoid re-executing the same request file
+    executed_set = set()
 
     for req_file in request_files_to_run:
-        process_request_file(req_file, env, pm, collection_root, summary, executed_set)
+        process_request_file(req_file, environment_vars, pm, collection_root, summary, executed_set)
 
     log.info("-" * 50)
     log.info("Execution finished.")

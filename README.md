@@ -193,7 +193,7 @@ When `get-resource.yaml` is executed:
 
 Scripts são arquivos Python que têm acesso a quatro variáveis globais:
 
--   `env` (dict): O dicionário de variáveis de ambiente. Você pode ler (`env['BASE_URL']`) e escrever (`env['NOVA_VAR'] = 'valor'`) nele.
+-   `environment_vars` (dict): O dicionário de variáveis de ambiente. Você pode ler (`environment_vars['BASE_URL']`) e escrever (`environment_vars['NOVA_VAR'] = 'valor'`) nele. **Alterações feitas neste dicionário serão automaticamente salvas de volta no arquivo `.environment-variables` após a execução do script.**
 -   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()` ou `pm.random_adjective()`.
 -   `log` (Logger): A instância do logger da execução atual. Você pode usá-la para registrar mensagens no log do PyMan (ex: `log.info('Mensagem')`, `log.error('Erro')`).
 -   `response` (`requests.Response`): Disponível **apenas em scripts `pos-script`**. Contém o objeto de resposta da requisição (`response.status_code`, `response.json()`).
