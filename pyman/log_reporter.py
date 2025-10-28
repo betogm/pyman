@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+#
+# PyMan - Python HTTP Request Executor
+# Author: Huberto Gastal Mayer (hubertogm@gmail.com)
+# License: GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
+# Project: PyMan - A CLI tool for executing HTTP request collections defined in YAML
+#
 
 import argparse
 import re
@@ -656,4 +662,3 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         exit(1)
-
