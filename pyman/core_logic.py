@@ -18,7 +18,7 @@ from request_parser import parse_request_file
 
 # --- Logging Setup ---
 
-def setup_logging(collection_root):
+def setup_logging(collection_root, collection_name):
     """
     Configures logging to console and file.
     Creates the 'logs' directory if it doesn't exist.
@@ -56,6 +56,7 @@ def setup_logging(collection_root):
         log.addHandler(console_handler)
         log.addHandler(file_handler)
     
+    log.info(f"Collection Name: {collection_name}")
     return log
 
 # --- Configuration Loading ---
@@ -125,6 +126,22 @@ def load_folder_config(folder_path):
         print(f"Error loading {config_file_to_load}: {e}")
     
     return config
+
+def get_collection_name(collection_root):
+    """
+    Determines the collection name based on config.yaml or directory name.
+    """
+    config_file_path = os.path.join(collection_root, 'config.yaml')
+    if os.path.exists(config_file_path):
+        try:
+            with open(config_file_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                if isinstance(config, dict) and 'COLLECTION_NAME' in config:
+                    return config['COLLECTION_NAME']
+        except Exception as e:
+            logging.getLogger('pyman').warning(f"Error reading config.yaml for collection name: {e}")
+    
+    return os.path.basename(collection_root)
 
 # --- Script Execution (Pre/Post) ---
 
