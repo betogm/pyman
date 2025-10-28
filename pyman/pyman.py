@@ -14,7 +14,8 @@ import sys
 try:
     from core_logic import (
         setup_logging,
-        run_collection
+        run_collection,
+        get_collection_name
     )
     from pyman_helpers import PyManHelpers
 except ImportError as e:
@@ -71,7 +72,8 @@ def main():
     # 1. Configure Logging
     # The log will always be saved in 'logs' inside the collection root
     try:
-        log = setup_logging(collection_root)
+        collection_name = get_collection_name(collection_root)
+        log = setup_logging(collection_root, collection_name)
     except Exception as e:
         print(f"Error configuring logging in {collection_root}: {e}")
         sys.exit(1)
