@@ -1,6 +1,6 @@
 # PyMan - Executor de Requisições via CLI
 
-PyMan: A lightweight, filesystem-based HTTP request runner for CLI. Inspired by Postman and Bruno, it executes collections defined in YAML files, supporting pre/post-run scripts (Python), environments, and multiple data types. Perfect for automating and version-controlling your API tests right alongside your code. ⚡️🐍
+PyMan: Um executor de requisições HTTP leve, baseado em sistema de arquivos, para linha de comando. Inspirado no Postman e Bruno, executa coleções definidas em arquivos YAML, com suporte a scripts de pré/pós-execução (Python), ambientes e múltiplos tipos de dados. Perfeito para automatizar e versionar seus testes de API junto com o código. ⚡️🐍
 
 ---
 
@@ -205,3 +205,27 @@ except Exception as e:
     print(f"Erro no script POS: {e}")
 
 ```
+
+## Importando do Postman
+
+O PyMan inclui um script para converter coleções do Postman v2.1 para o formato do PyMan. O script `pyman/postman_importer.py` converte os arquivos JSON do Postman para a estrutura de diretórios e arquivos YAML do PyMan.
+
+### Como Usar o Importador
+
+Execute o script a partir do seu terminal, fornecendo o caminho para a sua coleção do Postman e um diretório de saída.
+
+```console
+python pyman/postman_importer.py -c /caminho/para/sua/postman_collection.json -o minha_nova_colecao_pyman
+```
+
+### Argumentos
+
+-   `-c`, `--collection`: **(Obrigatório)** Caminho para o arquivo `.json` da coleção do Postman.
+-   `-o`, `--output`: **(Obrigatório)** Nome do diretório de saída onde a coleção do PyMan será criada.
+-   `-e`, `--environment`: (Opcional) Caminho para um arquivo de ambiente `.json` do Postman. As variáveis serão convertidas para um arquivo `.environment-variables`.
+
+### Detalhes da Conversão
+
+-   **Pastas e Requisições**: São convertidos em diretórios aninhados e arquivos `.yaml`.
+-   **Ambientes**: As variáveis do ambiente do Postman são salvas no arquivo `.environment-variables`.
+-   **Scripts (Pre-request & Test)**: O importador tenta uma conversão básica de código Javascript simples (como `pm.environment.set` e `console.log`) para Python. Para scripts mais complexos, o código JS original é comentado no arquivo de script `.py` correspondente com um aviso de `TODO`, exigindo conversão manual.
