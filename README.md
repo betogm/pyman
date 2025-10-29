@@ -222,3 +222,27 @@ except Exception as e:
     log.error(f"Error in POS script: {e}")
 
 ```
+
+## Importing from Postman
+
+PyMan includes a script to convert Postman v2.1 collections into the PyMan format. The script `pyman/postman_importer.py` converts Postman's JSON files into PyMan's YAML-based directory structure.
+
+### How to Use the Importer
+
+Run the script from your terminal, providing the path to your Postman collection and an output directory.
+
+```console
+python pyman/postman_importer.py -c /path/to/your/postman_collection.json -o my_new_pyman_collection
+```
+
+### Arguments
+
+-   `-c`, `--collection`: **(Required)** Path to the Postman collection `.json` file.
+-   `-o`, `--output`: **(Required)** Name of the output directory where the PyMan collection will be created.
+-   `-e`, `--environment`: (Optional) Path to a Postman environment `.json` file. The variables will be converted into a `.environment-variables` file.
+
+### Conversion Details
+
+-   **Folders and Requests**: Are converted into nested directories and `.yaml` files.
+-   **Environments**: Variables from the Postman environment are saved in the `.environment-variables` file.
+-   **Scripts (Pre-request & Test)**: The importer attempts a basic conversion of simple Javascript code (like `pm.environment.set` and `console.log`) to Python. For more complex scripts, the original JS code is commented out in the corresponding `.py` script file with a `TODO` notice, requiring manual conversion.
