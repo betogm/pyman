@@ -52,21 +52,7 @@ python pyman/pyman.py run Example_Collection/post-request/post-data.yaml
 PyMan expects the following file and directory structure:
 
 ```text
-/your-project/
-|
-|-- README.md
-|-- requirements.txt
-|-- pyproject.toml
-|
-|-- /pyman/
-|   |-- pyman.py
-|   |-- core_logic.py
-|   |-- request_parser.py
-|   |-- pyman_helpers.py
-|
-|   |-- run_20251027_103000.log   <-- Execution logs (created automatically)
-|
-|   |-- /example_collection/         <-- (Name without spaces, e.g., get-users)
+|-- /your_collection/         <-- (Name without spaces, e.g., get-users)
 |   |-- .environment-variables       <-- Global variables (e.g., BASE_URL="https://api.com")
 |   |-- collection-pre-script.py     <-- Python script executed BEFORE EACH request
 |   |-- collection-pos-script.py     <-- Python script executed AFTER EACH request
@@ -83,7 +69,7 @@ PyMan expects the following file and directory structure:
 |   |-- /post-request/
 |       |-- ...
 |
-|-- /another-folder/
+|   |-- /another-folder/
 |   |-- ...
 ```
 
@@ -246,3 +232,10 @@ python pyman/postman_importer.py -c /path/to/your/postman_collection.json -o my_
 -   **Folders and Requests**: Are converted into nested directories and `.yaml` files.
 -   **Environments**: Variables from the Postman environment are saved in the `.environment-variables` file.
 -   **Scripts (Pre-request & Test)**: The importer attempts a basic conversion of simple Javascript code (like `pm.environment.set` and `console.log`) to Python. For more complex scripts, the original JS code is commented out in the corresponding `.py` script file with a `TODO` notice, requiring manual conversion.
+
+---
+
+## Authors
+
+-   Huberto Gastal Mayer
+-   Google Gemini, for the help and time saved, thank you!

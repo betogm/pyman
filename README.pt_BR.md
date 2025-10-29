@@ -229,3 +229,10 @@ python pyman/postman_importer.py -c /caminho/para/sua/postman_collection.json -o
 -   **Pastas e Requisições**: São convertidos em diretórios aninhados e arquivos `.yaml`.
 -   **Ambientes**: As variáveis do ambiente do Postman são salvas no arquivo `.environment-variables`.
 -   **Scripts (Pre-request & Test)**: O importador tenta uma conversão básica de código Javascript simples (como `pm.environment.set` e `console.log`) para Python. Para scripts mais complexos, o código JS original é comentado no arquivo de script `.py` correspondente com um aviso de `TODO`, exigindo conversão manual.
+
+---
+
+## Autores
+
+-   Huberto Gastal Mayer
+-   Google Gemini, pela ajuda e tempo ganho, obrigado!
