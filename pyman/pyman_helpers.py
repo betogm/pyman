@@ -45,8 +45,6 @@ class PyManHelpers:
         except AssertionError as e:
             self.log.error(f"  FAILED: {name} | {e}")
 
-    # --- Dynamic Functions ({{pm.helper()}}) ---
-
     def timestamp(self):
         """Returns the current Unix timestamp in seconds."""
         return int(time.time())
@@ -65,6 +63,38 @@ class PyManHelpers:
         """Returns a random string from the character set."""
         length = int(length)
         return ''.join(random.choice(char_set) for _ in range(length))
+
+    def random_password(self, length=12):
+        """
+        Gera uma senha aleatória segura (convertido do seu script JS).
+        Garante pelo menos uma letra maiúscula, minúscula, número e símbolo.
+        """
+        length = int(length)
+        if length < 4:
+            length = 4  # Garante comprimento mínimo
+
+        upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        lower = 'abcdefghijklmnopqrstuvwxyz'
+        numbers = '0123456789'
+        special = '@$!%*?&'  # Conjunto de caracteres especiais do JS
+        all_chars = upper + lower + numbers + special
+
+        # Garante pelo menos um de cada
+        password_list = [
+            random.choice(upper),
+            random.choice(lower),
+            random.choice(numbers),
+            random.choice(special)
+        ]
+        
+        # Preenche o restante do comprimento
+        for _ in range(length - 4):
+            password_list.append(random.choice(all_chars))
+            
+        # Embaralha a lista para tornar as posições aleatórias
+        random.shuffle(password_list)
+        
+        return "".join(password_list)
 
     def random_adjective(self):
         """Returns a random adjective."""

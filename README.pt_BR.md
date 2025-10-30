@@ -184,6 +184,45 @@ Scripts são arquivos Python que têm acesso a três variáveis globais:
 
 -   `environment_vars` (dict): O dicionário de variáveis de ambiente. Você pode ler (`environment_vars['BASE_URL']`) e escrever (`environment_vars['NOVA_VAR'] = 'valor'`) nele.
 -   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()` ou `pm.random_adjective()`.
+-   `shared` (objeto): Um objeto especial para compartilhar variáveis e funções entre diferentes scripts dentro da mesma execução de coleção. Isso é particularmente útil para `collection-pre-script.py` configurar dados globais ou funções utilitárias que podem ser acessadas por scripts de pré/pós-requisição individuais.
+
+    **Exemplo: Compartilhando Variáveis e Funções**
+
+    ```python
+    # Este script é executado uma vez antes de tudo.
+
+    log.info("Iniciando o Collection Pre-Script...")
+
+    # 1. Definir uma variável global compartilhada
+    # Qualquer script subsequente pode ler ou modificar este valor.
+    shared.id_sessao_global = pm.random_uuid()
+    log.info(f"ID de Sessão Global definida: {shared.id_sessao_global}")
+
+    # 2. Definir uma função global compartilhada
+    # Primeiro, defina a função normalmente
+    def get_auth_token(username, password):
+        """
+        Uma função de exemplo que simula a obtenção de um token.
+        Em um caso real, você poderia até fazer um request aqui.
+        """
+        log.info(f"Simulando obtenção de token para: {username}")
+        # (Lógica para buscar o token...)
+        token = f"token_{pm.random_chars(10)}"
+        
+        # Salva o token também no escopo compartilhado
+        shared.ultimo_token_gerado = token
+        return token
+
+    # 3. Anexar a função ao objeto 'shared'
+    # Isso torna 'shared.get_auth_token' acessível globalmente.
+    shared.get_auth_token = get_auth_token
+
+    # 4. Você também pode definir variáveis de ambiente (isso já funcionava)
+    environment_vars["inicio_execucao"] = pm.timestamp()
+
+    log.info("Collection Pre-Script concluído.")
+    ```
+
 -   `response` (`requests.Response`): Disponível **apenas em scripts `pos-script`**. Contém o objeto de resposta da requisição (`response.status_code`, `response.json()`).
 
 ### Exemplo de `pos-script.py`
@@ -192,17 +231,24 @@ Scripts são arquivos Python que têm acesso a três variáveis globais:
 # meu-request-pos-script.py
 
 try:
+    log.info(f"Script POS: ID de Sessão Global do shared: {shared.id_sessao_global}")
+
+    # Usando uma função compartilhada
     if response.status_code == 200:
-        print("Script POS: Requisição OK!")
-        data = response.json()
+        log.info("Script POS: Requisição OK!")
         
-        # Extrai um ID da resposta e salva no ambiente
+        # Exemplo de uso da função compartilhada definida em collection-pre-script.py
+        novo_token = shared.obter_token_autenticacao("usuario_do_pos", "senha_do_pos")
+        log.info(f"Novo token gerado pela função compartilhada: {novo_token}")
+        log.info(f"Último token gerado do escopo shared: {shared.ultimo_token_gerado}")
+
+        data = response.json()
         if 'id' in data:
             environment_vars['LAST_ID_CRIADO'] = data['id']
-            print(f"ID salvo no ambiente: {environment_vars['LAST_ID_CRIADO']}")
+            log.info(f"ID salvo no ambiente: {environment_vars['LAST_ID_CRIADO']}")
             
 except Exception as e:
-    print(f"Erro no script POS: {e}")
+    log.error(f"Erro no script POS: {e}")
 
 ```
 
