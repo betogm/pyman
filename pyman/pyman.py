@@ -72,14 +72,12 @@ def main():
     log_file_path = None
     try:
         collection_name = get_collection_name(collection_root)
-        log = setup_logging(collection_root, collection_name)
         
-        # Find the file handler to get the log file path
-        for handler in log.handlers:
-            if isinstance(handler, logging.FileHandler):
-                log_file_path = handler.baseFilename
-                break
-        
+        # --- CORREÇÃO AQUI ---
+        # setup_logging agora retorna (log, log_filepath)
+        log, log_file_path = setup_logging(collection_root, collection_name)
+        # --- FIM DA CORREÇÃO ---
+
         # Log the collection name (used by the reporter)
         log.info(f"Collection Name: {collection_name}") 
 
