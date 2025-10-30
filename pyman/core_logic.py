@@ -263,7 +263,7 @@ def substitute_variables_recursive(data, variables, pm_instance, log):
         return data
 
 # --- Script Execution ---
-def execute_script(script_path, environment_vars, response, log, pm):
+def execute_script(script_path, environment_vars, response, log, pm, shared_scope=None):
     """Executes a Python pre-run or post-run script."""
     if not os.path.exists(script_path):
         log.debug(f"Script not found, skipping: {script_path}")
@@ -288,7 +288,8 @@ def execute_script(script_path, environment_vars, response, log, pm):
             'json': json,
             'os': os,
             're': re,
-            'time': time
+            'time': time,
+            'shared': shared_scope # The shared object for collection-level scope
         }
 
         exec(compile(script_code, script_path, 'exec'), script_globals)
@@ -484,16 +485,25 @@ def run_collection(target_path, collection_root, request_files, log, pm):
 
     results = {'total': 0, 'success': 0, 'failure': 0}
     failed_files = []
+    
+    # Create a shared scope object for all scripts in the collection
+    shared_scope = type("SharedScope", (object,), {})()
 
+    # --- Execute Collection Pre-script (ONCE) ---
     collection_pre_script = os.path.join(collection_root, 'collection-pre-script.py')
-    collection_pos_script = os.path.join(collection_root, 'collection-pos-script.py')
+    if os.path.exists(collection_pre_script):
+        log.info("-" * 50)
+        if execute_script(collection_pre_script, global_env_vars, None, log, pm, shared_scope=shared_scope):
+            write_environment_file(collection_root, global_env_vars, log)
 
+    last_response = None # To hold the response of the last executed request
     for req_file in request_files:
         log.info("-" * 50)
         log.info(f"Processing request file: {req_file}")
         results['total'] += 1
         request_success = True
 
+        # Use a copy for the request to keep global env clean between requests
         current_vars = global_env_vars.copy()
         
         folder_path = os.path.dirname(req_file)
@@ -502,12 +512,7 @@ def run_collection(target_path, collection_root, request_files, log, pm):
 
         response = None
         try:
-            # 1. Collection Pre-script
-            if execute_script(collection_pre_script, current_vars, None, log, pm):
-                global_env_vars.update(current_vars) # Update global
-                write_environment_file(collection_root, global_env_vars, log) # Save
-
-            # 2. Parse Request File
+            # Parse Request File
             try:
                 request_data = parse_request_file(req_file)
                 request_data['file_path'] = req_file # Add path for reference
@@ -516,21 +521,23 @@ def run_collection(target_path, collection_root, request_files, log, pm):
                  request_success = False
 
             if request_success:
-                # 3. Request Pre-script
+                # Request Pre-script
                 req_pre_script = req_file.replace('.yaml', '-pre-script.py').replace('.yml', '-pre-script.py')
-                if execute_script(req_pre_script, current_vars, None, log, pm):
-                    global_env_vars.update(current_vars) # Update global
-                    write_environment_file(collection_root, global_env_vars, log) # Save
+                if execute_script(req_pre_script, current_vars, None, log, pm, shared_scope=shared_scope):
+                    global_env_vars.update(current_vars)
+                    write_environment_file(collection_root, global_env_vars, log)
 
-                # 4. Main Request
+                # Main Request
                 pm._tests = [] # Reset pm helper's test results
                 response = execute_request(request_data, current_vars, pm, log)
+                if response is not None:
+                    last_response = response # Save for collection-pos-script
 
-                # 5. Request Post-script
+                # Request Post-script
                 req_pos_script = req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
-                if execute_script(req_pos_script, current_vars, response, log, pm):
-                    global_env_vars.update(current_vars) # Update global
-                    write_environment_file(collection_root, global_env_vars, log) # Save
+                if execute_script(req_pos_script, current_vars, response, log, pm, shared_scope=shared_scope):
+                    global_env_vars.update(current_vars)
+                    write_environment_file(collection_root, global_env_vars, log)
 
                 # Check for failed tests
                 if any(t['status'] == 'failed' for t in pm._tests):
@@ -539,11 +546,6 @@ def run_collection(target_path, collection_root, request_files, log, pm):
                 # Check for request failure (network error or status >= 400)
                 if response is None or response.status_code >= 400:
                     request_success = False
-
-                # 6. Collection Post-script
-                if execute_script(collection_pos_script, current_vars, response, log, pm):
-                    global_env_vars.update(current_vars) # Update global
-                    write_environment_file(collection_root, global_env_vars, log) # Save
 
         except Exception as e:
             log.error(f"Critical error during processing of {req_file}: {e}", exc_info=True)
@@ -554,6 +556,14 @@ def run_collection(target_path, collection_root, request_files, log, pm):
         else:
             results['failure'] += 1
             failed_files.append(req_file)
+
+    # --- Execute Collection Post-script (ONCE) ---
+    collection_pos_script = os.path.join(collection_root, 'collection-pos-script.py')
+    if os.path.exists(collection_pos_script):
+        log.info("-" * 50)
+        # Use the global environment and the last response from the loop
+        if execute_script(collection_pos_script, global_env_vars, last_response, log, pm, shared_scope=shared_scope):
+            write_environment_file(collection_root, global_env_vars, log)
 
     log.info("-" * 50)
     log.info("Execution finished.")
