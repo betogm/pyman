@@ -302,6 +302,7 @@ def parse_log_file(log_path):
     summary = {'total': 0, 'success': 0, 'failure': 0}
     start_time = None
     end_time = None
+    current_time = None
 
     with open(log_path, 'r', encoding='utf-8') as f:
         for line in f:
