@@ -45,7 +45,7 @@ def convert_js_to_py(script_lines):
     # Simple conversion patterns
     patterns = {
         r'pm\.environment\.set\("([^"]+)",\s*"([^"]+)"\);?': r'environment_vars["\1"] = "\2"',
-        r"pm\.environment\.set\('([^']+)','([^']+)'\);?": r"environment_vars['\1'] = '\2'",
+        r"pm\.environment\.set\('([^']+)',\s*'([^']+)'\);?": r"environment_vars['\1'] = '\2'",
         r'pm\.environment\.set\("([^"]+)",\s*([^)]+)\);?': r'environment_vars["\1"] = \2', # For pm.environment.set("id", 123)
         r'console\.log\((.*)\);?': r'log.info(f"PM_LOG: {\1}")' # Converts console.log
     }
@@ -147,15 +147,22 @@ def process_environment_file(environment_filepath, output_pyman_env_path, log):
     log.info(f"Successfully imported {count} enabled variables to {output_pyman_env_path}.")
 
 
-def process_item(item, current_path, log):
+def process_item(item, current_path, log, folder_counter, request_counter, should_number_folders, should_number_files):
     """
-    Recursively processes an item (folder or request) from the Postman collection.
+    Processes a single item (folder or request) from the Postman collection.
+    Returns the updated folder_counter and request_counter.
     """
     name = item.get('name', 'untitled')
     
     # It's a Folder
     if 'item' in item:
-        folder_name = slugify(name)
+        if should_number_folders:
+            folder_counter += 10
+            formatted_folder_idx = f"{folder_counter:03d}-"
+            folder_name = formatted_folder_idx + slugify(name)
+        else:
+            folder_name = slugify(name)
+
         folder_path = os.path.join(current_path, folder_name)
         log.info(f"Creating directory: {folder_path}")
         os.makedirs(folder_path, exist_ok=True)
@@ -166,13 +173,26 @@ def process_item(item, current_path, log):
         with open(config_path, 'w', encoding='utf-8') as f:
             yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
             
-        # Process items inside the folder
+        # Process items inside the folder, resetting counters for the new level
+        sub_folder_counter = 0
+        sub_request_counter = 0
         for sub_item in item['item']:
-            process_item(sub_item, folder_path, log)
-            
+            # Recursively call process_item, passing the current sub-counters
+            # and updating them based on the return value.
+            sub_folder_counter, sub_request_counter = process_item(
+                sub_item, folder_path, log, sub_folder_counter, sub_request_counter, should_number_folders, should_number_files
+            )
+        return folder_counter, request_counter # Return the counters for the current level
+
     # It's a Request
     elif 'request' in item:
-        req_name = slugify(name)
+        if should_number_files:
+            request_counter += 10
+            formatted_request_idx = f"{request_counter:03d}-"
+            req_name = formatted_request_idx + slugify(name)
+        else:
+            req_name = slugify(name)
+
         req_filename = f"{req_name}.yaml"
         req_filepath = os.path.join(current_path, req_filename)
         log.info(f"Creating request file: {req_filepath}")
@@ -220,22 +240,16 @@ def process_item(item, current_path, log):
                 raw_body = body.get('raw', '')
                 if raw_body: # Only process if not empty
                     try:
-                        # Tries to parse the raw_body as JSON.
                         json_data = json.loads(raw_body)
-                        # If successful, formats the JSON with indentation to
-                        # force yaml.dump to use the literal style '|'
                         pretty_json_string = json.dumps(json_data, indent=2, ensure_ascii=False)
                         pyman_req['body'] = pretty_json_string
                     except json.JSONDecodeError:
-                        # If it's not JSON (e.g., XML, plain text),
-                        # just use the original raw text.
                         pyman_req['body'] = raw_body
                 else:
                     pyman_req['body'] = '' # Empty body
             
             elif mode == 'urlencoded':
                 pyman_req['body'] = {p['key']: p['value'] for p in body['urlencoded'] if not p.get('disabled')}
-                # Ensures the correct header for urlencoded
                 if 'headers' not in pyman_req: pyman_req['headers'] = {}
                 pyman_req['headers']['Content-Type'] = 'application/x-www-form-urlencoded'
             
@@ -248,14 +262,12 @@ def process_item(item, current_path, log):
                         pyman_req['body'][p['key']] = {'type': 'file', 'src': p.get('src', 'TODO_SPECIFY_FILE_PATH')}
                     else:
                         pyman_req['body'][p['key']] = p.get('value', '')
-                # Content-Type header is handled by PyMan's core_logic for multipart
             
             elif mode == 'file':
                  pyman_req['body'] = {'file_part': {'type': 'file', 'src': body.get('file', {}).get('src', 'TODO_SPECIFY_FILE_PATH')}}
 
         # Save the request YAML file
         with open(req_filepath, 'w', encoding='utf-8') as f:
-            # Use a custom dumper for multi-line strings
             yaml.dump(pyman_req, f, Dumper=ForceLiteralDumper, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
         # 6. Scripts (Pre-request and Test)
@@ -282,6 +294,10 @@ def process_item(item, current_path, log):
                 f.write("#!/usr/bin/env python\n")
                 f.write("# -*- coding: utf-8 -*-\n\n")
                 f.write(py_code)
+        return folder_counter, request_counter # Return the counters for the current level
+    
+    # If it's neither a folder nor a request, just return the counters unchanged
+    return folder_counter, request_counter
 
 # --- Custom YAML Dumper ---
 # This class tells PyYAML to ALWAYS use the '|' (literal) style
@@ -310,8 +326,30 @@ def main():
     parser.add_argument("-c", "--collection", help="Path to the Postman .json collection file.", required=True)
     parser.add_argument("-o", "--output", help="Output directory name for the PyMan collection.", required=True)
     parser.add_argument("-e", "--environment", help="Path to the Postman environment .json file (optional).", required=False, default=None)
+    parser.add_argument(
+        "--numbered", 
+        choices=['yes', 'no'], 
+        default='yes', 
+        help="Whether to add numbering to folders and files (default: yes)."
+    )
+    parser.add_argument(
+        "--numbered-folders", 
+        choices=['yes', 'no'], 
+        default=None, 
+        help="Whether to add numbering to folders (overrides --numbered)."
+    )
+    parser.add_argument(
+        "--numbered-files", 
+        choices=['yes', 'no'], 
+        default=None, 
+        help="Whether to add numbering to files (overrides --numbered)."
+    )
 
     args = parser.parse_args()
+
+    # Determine numbering preferences with precedence
+    should_number_folders = (args.numbered_folders == 'yes') if args.numbered_folders is not None else (args.numbered == 'yes')
+    should_number_files = (args.numbered_files == 'yes') if args.numbered_files is not None else (args.numbered == 'yes')
 
     # Check if the input file exists
     if not os.path.exists(args.collection):
@@ -374,11 +412,19 @@ def main():
 
     # Start recursive processing of items
     items = collection.get('item', [])
+    
+    top_level_folder_counter = 0
+    top_level_request_counter = 0
+    
     for item in items:
-        process_item(item, output_path, log)
+        # process_item now returns the updated counters
+        top_level_folder_counter, top_level_request_counter = process_item(
+            item, output_path, log, 
+            top_level_folder_counter, top_level_request_counter,
+            should_number_folders, should_number_files
+        )
 
     log.info("Conversion completed successfully!")
 
 if __name__ == "__main__":
     main()
-
