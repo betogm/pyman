@@ -66,18 +66,6 @@ class ColorFormatter(logging.Formatter):
         if record.levelno == logging.INFO:
             if record.message.strip().startswith("PASSED:"):
                 message = f"{Color.GREEN}{message}{Color.RESET}"
-            elif record.message.strip().startswith("STATUS:"):
-                try:
-                    # STATUS: 200 OK (123 ms)
-                    status_code_str = record.message.split()[1]
-                    if status_code_str.isdigit():
-                        status_code = int(status_code_str)
-                        if status_code >= 400:
-                            message = f"{Color.BOLD}{Color.RED}{message}{Color.RESET}"
-                        elif status_code >= 200 and status_code < 300:
-                            message = f"{Color.GREEN}{message}{Color.RESET}"
-                except (IndexError, ValueError):
-                    pass # Ignore if the status line is not in the expected format
             elif record.message.startswith("Dispatching"):
                 message = f"{Color.CYAN}{message}{Color.RESET}"
             elif record.message.startswith("Executing collection") or \
@@ -463,12 +451,19 @@ def execute_request(request_data, current_vars, pm_instance, log):
         duration_ms = (end_time_req - start_time_req) * 1000
         
         status_text = "N/A"
-        status_code = "N/A"
+        status_code = 0
         if response is not None:
             status_code = response.status_code
             status_text = response.reason
             
-        log.info(f"STATUS: {status_code} {status_text} ({duration_ms:.0f} ms)")
+        status_message = f"STATUS: {status_code} {status_text} ({duration_ms:.0f} ms)"
+        if status_code >= 500:
+            log.error(status_message)
+        elif status_code >= 400:
+            log.warning(status_message)
+        elif status_code > 0:
+            log.info(status_message)
+        # If status_code is 0 or response is None, an error was already logged.
         
         if response is not None:
             log.debug(f"HEADERS (Response): {dict(response.headers)}")
@@ -560,9 +555,8 @@ def run_collection(target_path, collection_root, request_files, log, pm):
                 # Check for failed tests
                 if any(t['status'] == 'failed' for t in pm._tests):
                      request_success = False
-
-                # Check for request failure (network error or status >= 400)
-                if response is None or response.status_code >= 400:
+                # If there are no tests, consider the request a failure on >= 400 status
+                elif not pm._tests and (response is None or response.status_code >= 400):
                     request_success = False
 
         except Exception as e:
