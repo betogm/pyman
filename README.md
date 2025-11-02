@@ -29,7 +29,7 @@ Execute `pyman.py` (inside the `pyman` folder) with the `run` command and the de
 
 ### Run an entire collection
 
-To run all requests in the project root:
+By default, requests are executed in alphabetical order based on the directory and file structure.
 
 ```console
 python pyman/pyman.py run .
@@ -47,15 +47,52 @@ python pyman/pyman.py run Example_Collection/get-request
 python pyman/pyman.py run Example_Collection/post-request/post-data.yaml
 ```
 
+### Run a collection with a specific order
+
+You can define custom execution orders in a `config.yaml` file at the root of your collection. Use the `--collection-order` flag to specify which order to run.
+
+```console
+python pyman/pyman.py run . --collection-order=TestUpload
+```
+
+## Collection Configuration
+
+You can create a `config.yaml` file in the root directory of your collection to define metadata and custom execution orders.
+
+```yaml
+# /your_collection/config.yaml
+
+COLLECTION_NAME: "My API Test Suite"
+DESCRIPTION: "This collection tests the main endpoints of the public API."
+
+COLLECTIONS_ORDER:
+  # The 'Default' order is used when no --collection-order flag is provided
+  Default:
+    - auth/login.yaml
+    - users/get-users.yaml
+    - users/create-user.yaml
+  
+  # A custom order for running only upload tests
+  UploadTests:
+    - auth/login.yaml
+    - files/upload-image.yaml
+    - files/upload-document.yaml
+```
+
+-   `COLLECTION_NAME`: The name of the collection, used as the title in logs and HTML reports.
+-   `DESCRIPTION`: A brief description, also shown in the report header.
+-   `COLLECTIONS_ORDER`: A dictionary where each key is the name of a custom execution order. The value is a list of request file paths, relative to the collection root.
+
 ## Directory Structure
 
 PyMan expects the following file and directory structure:
 
 ```text
-|-- /your_collection/         <-- (Name without spaces, e.g., get-users)
+|-- /your_collection/
+|   |-- config.yaml                  <-- (Optional) Collection metadata and execution order
 |   |-- .environment-variables       <-- Global variables (e.g., BASE_URL="https://api.com")
-|   |-- collection-pre-script.py     <-- Python script executed BEFORE EACH request
-|   |-- collection-pos-script.py     <-- Python script executed AFTER EACH request
+|   |-- collection-pre-script.py     <-- Python script executed ONCE before the collection
+|   |-- collection-pos-script.py     <-- Python script executed ONCE after the collection
 |   |
 |   |-- /logs/
 |   |
@@ -68,9 +105,6 @@ PyMan expects the following file and directory structure:
 |   |
 |   |-- /post-request/
 |       |-- ...
-|
-|   |-- /another-folder/
-|   |-- ...
 ```
 
 ## Request File Format (.yaml)

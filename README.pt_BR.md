@@ -29,7 +29,7 @@ Execute o `pyman.py` (dentro da pasta `pyman`) com o comando `run` e o alvo dese
 
 ### Executar uma coleção inteira
 
-Para executar todas as requisições na raiz do projeto:
+Por padrão, as requisições são executadas em ordem alfabética, com base na estrutura de pastas e arquivos.
 
 ```console
 python pyman/pyman.py run .
@@ -47,6 +47,42 @@ python pyman/pyman.py run Example_Collection/get-request
 python pyman/pyman.py run Example_Collection/post-request/post-data.yaml
 ```
 
+### Executar uma coleção com uma ordem específica
+
+Você pode definir ordens de execução personalizadas em um arquivo `config.yaml` na raiz da sua coleção. Use a flag `--collection-order` para especificar qual ordem executar.
+
+```console
+python pyman/pyman.py run . --collection-order=TestUpload
+```
+
+## Configuração da Coleção
+
+Você pode criar um arquivo `config.yaml` no diretório raiz da sua coleção para definir metadados e ordens de execução personalizadas.
+
+```yaml
+# /sua_colecao/config.yaml
+
+COLLECTION_NAME: "Minha Suíte de Testes de API"
+DESCRIPTION: "Esta coleção testa os principais endpoints da API pública."
+
+COLLECTIONS_ORDER:
+  # A ordem 'Default' é usada quando a flag --collection-order não é fornecida
+  Default:
+    - auth/login.yaml
+    - users/get-users.yaml
+    - users/create-user.yaml
+  
+  # Uma ordem personalizada para rodar apenas testes de upload
+  UploadTests:
+    - auth/login.yaml
+    - files/upload-image.yaml
+    - files/upload-document.yaml
+```
+
+-   `COLLECTION_NAME`: O nome da coleção, usado como título nos logs e relatórios HTML.
+-   `DESCRIPTION`: Uma breve descrição, também exibida no cabeçalho do relatório.
+-   `COLLECTIONS_ORDER`: Um dicionário onde cada chave é o nome de uma ordem de execução personalizada. O valor é uma lista de caminhos para os arquivos de requisição, relativos à raiz da coleção.
+
 ## Estrutura de Diretórios
 
 O PyMan espera a seguinte estrutura de arquivos e diretórios:
@@ -54,26 +90,23 @@ O PyMan espera a seguinte estrutura de arquivos e diretórios:
 ```text
 /seu-projeto/
 |
-|-- /tests_collection/         <-- (Nome sem espaços, ex: get-users)
+|-- /sua_colecao/
+|   |-- config.yaml                  <-- (Opcional) Metadados e ordem de execução da coleção
 |   |-- .environment-variables       <-- Variáveis globais (ex: BASE_URL="https://api.com")
-|   |-- collection-pre-script.py     <-- Script Python executado ANTES de CADA requisição
-|   |-- collection-pos-script.py     <-- Script Python executado DEPOIS de CADA requisição
+|   |-- collection-pre-script.py     <-- Script Python executado UMA VEZ antes da coleção
+|   |-- collection-pos-script.py     <-- Script Python executado UMA VEZ depois da coleção
 |
 |   |-- /logs/
-|   |   |-- run_20251027_103000.log   <-- Logs de execução (criado automaticamente)
 |   |
-|   |-- /example-get-request/
+|   |-- /get-request/
 |   |   |-- config.yaml          <-- Metadados da pasta (ex: FOLDER_NAME="Buscar Dados")
 |   |   |
 |   |   |-- get-data.yaml        <-- Arquivo da Requisição (ver formato abaixo)
 |   |   |-- get-data-pos-script.py  <-- Script DEPOIS desta requisição
 |   |   |-- get-data-pre-script.py  <-- Script ANTES desta requisição
 |   |
-|   |-- /example-post-request/
+|   |-- /post-request/
 |       |-- ...
-|
-|-- /outra-pasta/
-|   |-- ...
 ```
 
 ## Formato do Arquivo de Requisição (.yaml)

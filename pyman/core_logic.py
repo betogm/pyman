@@ -98,7 +98,7 @@ class ColorFormatter(logging.Formatter):
         return message
 
 # --- Logging Setup ---
-def setup_logging(collection_root, collection_name="pyman_run"):
+def setup_logging(collection_root, collection_name="pyman_run", collection_description=None):
     """Configures logging to file and console."""
     log_dir = os.path.join(collection_root, 'logs')
     os.makedirs(log_dir, exist_ok=True)
@@ -136,12 +136,17 @@ def setup_logging(collection_root, collection_name="pyman_run"):
     ch.setFormatter(ColorFormatter())
     log.addHandler(ch)
 
+    # Log collection metadata
+    log.info(f"Collection Name: {collection_name}")
+    if collection_description:
+        log.info(f"Collection Description: {collection_description}")
+
     # Return both the logger and the path
     return log, log_filepath
 
 # --- Configuration Loading ---
-def get_collection_name(collection_root):
-    """Tries to get the collection name from config.yaml or defaults to directory name."""
+def load_collection_config(collection_root):
+    """Loads the main config.yaml from the collection root."""
     config_path = os.path.join(collection_root, 'config.yaml')
     if not os.path.exists(config_path):
         config_path = os.path.join(collection_root, 'config.yml')
@@ -151,12 +156,25 @@ def get_collection_name(collection_root):
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = yaml.safe_load(f)
                 if config_data and isinstance(config_data, dict):
-                    # Look for COLLECTION_NAME or FOLDER_NAME (for consistency)
-                    return config_data.get('COLLECTION_NAME', config_data.get('FOLDER_NAME', os.path.basename(collection_root)))
+                    return config_data
         except Exception as e:
-            print(f"Warning: Could not read collection name from {config_path}: {e}")
+            # Using print because logger might not be configured yet
+            print(f"Warning: Could not read or parse config file at {config_path}: {e}")
+    return {} # Return empty dict if no config found
 
-    return os.path.basename(collection_root)
+def get_collection_name(collection_root, config=None):
+    """Tries to get the collection name from config or defaults to directory name."""
+    if config is None:
+        config = load_collection_config(collection_root)
+    
+    return config.get('COLLECTION_NAME', os.path.basename(collection_root))
+
+def get_collection_description(collection_root, config=None):
+    """Gets the collection description from the config."""
+    if config is None:
+        config = load_collection_config(collection_root)
+    
+    return config.get('DESCRIPTION', None)
 
 def load_environment(collection_root, log):
     """Loads environment variables from .environment-variables file."""

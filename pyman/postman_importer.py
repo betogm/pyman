@@ -15,7 +15,7 @@ import re
 import argparse
 import sys
 import logging
-import yaml # Required for the custom dumper
+import yaml
 
 def slugify(text):
     """

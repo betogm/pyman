@@ -1,0 +1,11 @@
+COLLECTION_NAME: "Example Collection"
+DESCRIPTION: "A collection of example requests for demonstration purposes."
+COLLECTIONS_ORDER:
+  Default:
+    - post-request/upload-file.yaml
+    - get-request/get-data.yaml
+    - post-request/post-data.yaml
+  TestUpload:
+    - post-request/upload-file.yaml
+  TestGet:
+    - get-request/get-data.yaml
