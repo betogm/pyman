@@ -209,6 +209,7 @@ HTML_TEMPLATE = """
         <header>
             <h1>PyMan Execution Report</h1>
             <p><strong>Collection:</strong> {collection_name}</p>
+            <p><em>{collection_description}</em></p>
             <p><strong>Execution Date:</strong> {execution_date}</p>
         </header>
 
@@ -296,9 +297,11 @@ def parse_log_file(log_path):
     script_error_start_re = re.compile(r"ERROR - Error executing script (.*): (.*)")
     traceback_re = re.compile(r"^\s+.*|Traceback.*") # Traceback lines
     collection_name_re = re.compile(r"INFO - Collection Name: (.*)") # Regex to get collection name from log
+    collection_desc_re = re.compile(r"INFO - Collection Description: (.*)")
     summary_re = re.compile(r"Summary: (\d+) total, (\d+) success, (\d+) failure")
 
     collection_name = "Unknown"
+    collection_description = ""
     summary = {'total': 0, 'success': 0, 'failure': 0}
     start_time = None
     end_time = None
@@ -321,6 +324,12 @@ def parse_log_file(log_path):
             if match:
                 collection_name = match.group(1).strip()
                 continue # Move to next line after finding collection name
+
+            # Extract collection description
+            match = collection_desc_re.search(line)
+            if match:
+                collection_description = match.group(1).strip()
+                continue
 
             # Start of a new request execution block
             match = req_file_re.search(line)
@@ -494,9 +503,9 @@ def parse_log_file(log_path):
     # Calculate total time
     total_time = (end_time - start_time).total_seconds() if start_time and end_time else 0
 
-    return collection_name, executions, summary, total_time
+    return collection_name, collection_description, executions, summary, total_time
 
-def generate_html_report(collection_name, executions, summary, total_time, output_path):
+def generate_html_report(collection_name, collection_description, executions, summary, total_time, output_path):
     """Generates the HTML file from the parsed data."""
     executions_html = ""
     total_tests = 0
@@ -614,6 +623,7 @@ def generate_html_report(collection_name, executions, summary, total_time, outpu
     # Populate the main HTML template
     final_html = HTML_TEMPLATE.format(
         collection_name=html.escape(collection_name),
+        collection_description=html.escape(collection_description),
         execution_date=datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         total_requests=len(executions),
         total_tests=total_tests, # Total individual tests
@@ -655,8 +665,8 @@ if __name__ == "__main__":
 
     # Execute parsing and HTML generation
     try:
-        collection_name, executions, summary, total_time = parse_log_file(args.log_file)
-        generate_html_report(collection_name, executions, summary, total_time, output_file)
+        collection_name, collection_description, executions, summary, total_time = parse_log_file(args.log_file)
+        generate_html_report(collection_name, collection_description, executions, summary, total_time, output_file)
     except Exception as e:
         # Catch-all for any unexpected errors during processing
         print(f"An error occurred while processing the log or generating the report: {e}")
