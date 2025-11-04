@@ -186,9 +186,6 @@ def main():
                     # Call reporter functions
                     parsed_collection_name, parsed_collection_desc, executions, summary, total_time = parse_log_file(log_file_path)
                     generate_html_report(parsed_collection_name, parsed_collection_desc, executions, summary, total_time, report_file_path)
-                    
-                    # Print the final report path
-                    print(f"HTML report generated at: {report_file_path}")
                 
                 except Exception as e:
                     log.error(f"Failed to generate HTML report: {e}", exc_info=True)
