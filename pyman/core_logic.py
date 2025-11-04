@@ -18,6 +18,9 @@ import json
 import yaml # For loading config.yaml
 from datetime import datetime
 from urllib.parse import urlencode # For building query params
+import io
+from contextlib import redirect_stdout
+
 
 # Import helper and parser relative to the 'app' directory
 try:
@@ -270,47 +273,85 @@ def substitute_variables_recursive(data, variables, pm_instance, log):
 
 # --- Script Execution ---
 def execute_script(script_path, environment_vars, response, log, pm, shared_scope=None):
-    """Executes a Python pre-run or post-run script."""
+    """
+    Executes a Python script, captures its output, and handles specific errors.
+    Returns a tuple: (env_changed, script_output, script_failed_exception, assertion_error).
+    """
     if not os.path.exists(script_path):
         log.debug(f"Script not found, skipping: {script_path}")
-        return False # Return False (no changes)
+        return False, "", None, False
 
     log.info(f"Executing script: {script_path}")
     
-    # Store a copy of the env to detect changes
     env_before = environment_vars.copy()
+    script_output = io.StringIO()
+    script_failed_exception = None
+    assertion_error = False
     
     try:
         with open(script_path, 'r', encoding='utf-8') as f:
             script_code = f.read()
 
-        # Prepare the global scope for the script
         script_globals = {
             'pm': pm,
-            'environment_vars': environment_vars, # The script modifies this dict directly
-            'response': response, # requests.Response object or None
+            'environment_vars': environment_vars,
+            'response': response,
             'log': log,
             'requests': requests,
             'json': json,
             'os': os,
             're': re,
             'time': time,
-            'shared': shared_scope # The shared object for collection-level scope
+            'shared': shared_scope
         }
 
-        exec(compile(script_code, script_path, 'exec'), script_globals)
+        # Inicializa pm.failed_tests se não existir
+        if not hasattr(pm, 'failed_tests'):
+            pm.failed_tests = []
 
-        # Check if the script modified the environment
-        if environment_vars != env_before:
-            log.info("Environment variables were modified by the script.")
-            return True # Indicate that changes were made
+        with redirect_stdout(script_output):
+            exec(compile(script_code, script_path, 'exec'), script_globals)
+
+        # Após execução, verifica se houve falhas de teste registradas
+        log.debug(f"[DEBUG] pm.failed_tests exists: {hasattr(pm, 'failed_tests')}, value: {getattr(pm, 'failed_tests', None)}")
+        if hasattr(pm, 'failed_tests') and pm.failed_tests:
+            log.error(f"[DEBUG] Vai lançar AssertionError devido a pm.failed_tests: {pm.failed_tests}")
+            raise AssertionError("Test failures: " + "; ".join(str(msg) for msg in pm.failed_tests))
+
+    except requests.exceptions.JSONDecodeError as e:
+        script_failed_exception = e
+        # Log an elegant, user-friendly error instead of a raw traceback
+        error_message = (
+            f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: The test script encountered an error.\n"
+            f"   Error: Failed to decode JSON from the response body.\n"
+            f"   This usually happens when the script expects a JSON response (e.g., calling response.json()),\n"
+            f"   but the server returned a non-JSON response (e.g., HTML, plain text, or an empty body)."
+        )
+        print(error_message) # This will be captured by script_output
+        log.error(f"JSONDecodeError in {script_path}: {e}", exc_info=False)
+
+    except AssertionError as e:
+        log.error(f"ASSERTION ERROR in {script_path}: {e}", exc_info=True)
+
+        script_failed_exception = e
+        assertion_error = True
 
     except Exception as e:
+        script_failed_exception = e
         log.error(f"Error executing script {script_path}: {e}", exc_info=True)
-        # If a script fails (e.g., AssertionError in a test), we don't necessarily stop
-        # But we log the error.
-    
-    return False # No changes detected
+
+    # Check if the script modified the environment
+    env_changed = environment_vars != env_before
+    if env_changed:
+        log.info("Environment variables were modified by the script.")
+        
+    output = script_output.getvalue()
+    # Also log the script's captured output to the file for debugging
+    if output.strip():
+        log.debug(f"--- Script Output ---\n{output.strip()}\n---------------------")
+
+    # return env_changed, output, script_failed_exception
+    return env_changed, output, script_failed_exception, assertion_error
 
 # --- Request Execution ---
 def execute_request(request_data, current_vars, pm_instance, log):
@@ -496,7 +537,7 @@ def run_collection(target_path, collection_root, request_files, log, pm):
     global_env_vars = load_environment(collection_root, log)
     global_env_vars['_collection_root'] = collection_root # Add root path
 
-    results = {'total': 0, 'success': 0, 'failure': 0}
+    results = {'total': 0, 'success': 0, 'failure': 0, 'warnings': 0}
     failed_files = []
     
     # Create a shared scope object for all scripts in the collection
@@ -506,7 +547,8 @@ def run_collection(target_path, collection_root, request_files, log, pm):
     collection_pre_script = os.path.join(collection_root, 'collection-pre-script.py')
     if os.path.exists(collection_pre_script):
         log.info("-" * 50)
-        if execute_script(collection_pre_script, global_env_vars, None, log, pm, shared_scope=shared_scope):
+        env_changed, _, _, _ = execute_script(collection_pre_script, global_env_vars, None, log, pm, shared_scope=shared_scope)
+        if env_changed:
             write_environment_file(collection_root, global_env_vars, log)
 
     last_response = None # To hold the response of the last executed request
@@ -514,7 +556,7 @@ def run_collection(target_path, collection_root, request_files, log, pm):
         log.info("-" * 50)
         log.info(f"Processing request file: {req_file}")
         results['total'] += 1
-        request_success = True
+        request_success = True # Assume success until proven otherwise
 
         # Use a copy for the request to keep global env clean between requests
         current_vars = global_env_vars.copy()
@@ -529,6 +571,7 @@ def run_collection(target_path, collection_root, request_files, log, pm):
             try:
                 request_data = parse_request_file(req_file)
                 request_data['file_path'] = req_file # Add path for reference
+                pm.request_name = request_data.get('name', os.path.basename(req_file)) # Set request name for pm
             except Exception as e:
                  log.error(f"Failed to parse request file {req_file}: {e}", exc_info=True)
                  request_success = False
@@ -536,28 +579,65 @@ def run_collection(target_path, collection_root, request_files, log, pm):
             if request_success:
                 # Request Pre-script
                 req_pre_script = req_file.replace('.yaml', '-pre-script.py').replace('.yml', '-pre-script.py')
-                if execute_script(req_pre_script, current_vars, None, log, pm, shared_scope=shared_scope):
+                env_changed, _, script_error, _ = execute_script(req_pre_script, current_vars, None, log, pm, shared_scope=shared_scope)
+                if env_changed:
                     global_env_vars.update(current_vars)
                     write_environment_file(collection_root, global_env_vars, log)
+                if script_error:
+                    request_success = False # Fail if pre-script has an error
 
                 # Main Request
-                pm._tests = [] # Reset pm helper's test results
                 response = execute_request(request_data, current_vars, pm, log)
                 if response is not None:
                     last_response = response # Save for collection-pos-script
 
                 # Request Post-script
                 req_pos_script = req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
-                if execute_script(req_pos_script, current_vars, response, log, pm, shared_scope=shared_scope):
+                has_pos_script = os.path.exists(req_pos_script)
+                
+                env_changed, _, script_error, assertion_error = execute_script(req_pos_script, current_vars, response, log, pm, shared_scope=shared_scope)
+                if env_changed:
                     global_env_vars.update(current_vars)
                     write_environment_file(collection_root, global_env_vars, log)
 
-                # Check for failed tests
-                if any(t['status'] == 'failed' for t in pm._tests):
-                     request_success = False
-                # If there are no tests, consider the request a failure on >= 400 status
-                elif not pm._tests and (response is None or response.status_code >= 400):
-                    request_success = False
+                # --- NEW SUCCESS/FAILURE LOGIC ---
+                http_status = response.status_code if response is not None else 0
+
+                if has_pos_script:
+
+                    log.info("-" * 150)
+                    log.info("ASSERTION RESULTS FROM POST-SCRIPT: %s", assertion_error)
+                    # ✅ MODO 1: Há post-script -> só o resultado dos asserts importa
+                    if assertion_error:
+                        log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Post-script assertions failed.")
+                        request_success = False
+                        results['failure'] += 1
+                    elif script_error is not None:
+                        log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Post-script execution error.")
+                        request_success = False
+                        results['failure'] += 1
+                    else:
+                        # O post-script rodou com sucesso — ignora status HTTP
+                        request_success = True
+                        results['success'] += 1
+
+                else:
+                    # ⚙️ MODO 2: Sem post-script -> classificar pela resposta HTTP
+                    if http_status >= 500:
+                        log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Server error {http_status}.")
+                        request_success = False
+                        results['failure'] += 1
+                    elif 400 <= http_status < 500:
+                        log.warning(f"⚠️ [{pm.request_name or 'Unnamed Test'}] - WARNING: Client error {http_status}.")
+                        results['warnings'] += 1
+                        request_success = True  # warning, mas não falha
+                    elif http_status == 0:
+                        log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: No response received.")
+                        request_success = False
+                        results['failure'] += 1
+                    else:
+                        request_success = True
+                        results['success'] += 1
 
         except Exception as e:
             log.error(f"Critical error during processing of {req_file}: {e}", exc_info=True)
@@ -574,12 +654,13 @@ def run_collection(target_path, collection_root, request_files, log, pm):
     if os.path.exists(collection_pos_script):
         log.info("-" * 50)
         # Use the global environment and the last response from the loop
-        if execute_script(collection_pos_script, global_env_vars, last_response, log, pm, shared_scope=shared_scope):
+        env_changed, _, _, _ = execute_script(collection_pos_script, global_env_vars, last_response, log, pm, shared_scope=shared_scope)
+        if env_changed:
             write_environment_file(collection_root, global_env_vars, log)
 
     log.info("-" * 50)
     log.info("Execution finished.")
-    log.info(f"Summary: {results['total']} total, {results['success']} success, {results['failure']} failure.")
+    log.info(f"✅ Summary: {results['total']} total | 🟢 {results['success']} success | ⚠️ {results['warnings']} warnings | 🔴 {results['failure']} failure")
     log.info("-" * 50)
 
     # Raise exception if there were failures, so pyman.py can catch it
