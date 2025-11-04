@@ -1,10 +1,5 @@
-# -*- coding: utf-8 -*-
-#
-# PyMan - Python HTTP Request Executor
-# Author: Huberto Gastal Mayer (hubertogm@gmail.com)
-# License: GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
-# Project: PyMan - A CLI tool for executing HTTP request collections defined in YAML
-#
+# -*- coding: utf-8 -*#
+# PyMan - Python HTTP Request Executor# Author: Huberto Gastal Mayer (hubertogm@gmail.com)# License: GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)# Project: PyMan - A CLI tool for executing HTTP request collections defined in YAML#
 
 import argparse
 import re
@@ -74,7 +69,8 @@ HTML_TEMPLATE = """
         .bg-green {{ background: linear-gradient(45deg, #2ecc71, #27ae60); }}
         .bg-red {{ background: linear-gradient(45deg, #e74c3c, #c0392b); }}
         .bg-purple {{ background: linear-gradient(45deg, #9b59b6, #8e44ad); }}
-        
+        .bg-yellow {{ background: linear-gradient(45deg, #f39c12, #f1c40f); }}
+
         .filters {{
             margin-bottom: 20px;
             display: flex;
@@ -144,11 +140,13 @@ HTML_TEMPLATE = """
         }}
         .details-content h4 {{ margin-top: 20px; color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 5px;}}
         .details-grid {{
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
             border-top: 1px solid #eee;
             padding-top: 15px;
+        }}
+        .request-details {{
+            width: 40%;
+            float: left;
+            margin-right: 3%;
         }}
         .assertions-list {{ list-style-type: none; padding: 0; }}
         .assertion-item {{
@@ -166,13 +164,13 @@ HTML_TEMPLATE = """
         }}
         .assertion-passed {{ color: #2ecc71; }}
         .assertion-failed {{ color: #e74c3c; }}
-        .assertion-message {{ 
-            color: #e74c3c; 
-            font-family: monospace; 
-            font-size: 0.9em; 
-            margin-top: 5px; 
-            background: #fbeaea; 
-            padding: 5px; 
+        .assertion-message {{
+            color: #e74c3c;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin-top: 5px;
+            background: #fbeaea;
+            padding: 5px;
             border-radius: 3px;
             white-space: pre-wrap; /* Wrap lines in error messages */
             word-break: break-all;
@@ -183,10 +181,10 @@ HTML_TEMPLATE = """
             color: #f1f1f1;
             padding: 15px;
             border-radius: 5px;
-            white-space: pre-wrap;
-            word-wrap: break-word;
+            white-space: pre; /* Allow horizontal scrolling */
+            overflow-x: auto; /* Add scrollbar when content overflows */
             font-family: "Courier New", Courier, monospace;
-            font-size: 0.9em; /* Reduce font size for JSON/Headers */
+            font-size: 0.9em;
         }}
         .pre-header {{ font-size: 0.8em; }} /* Even smaller size for headers */
         
@@ -221,15 +219,19 @@ HTML_TEMPLATE = """
                 </div>
                 <div class="summary-card bg-purple">
                     <span class="value">{total_tests}</span>
-                    <span class="label">Tests</span>
+                    <span class="label">Assertions</span>
                 </div>
                 <div class="summary-card bg-green">
-                    <span class="value">{passed_requests}</span>
+                    <span class="value">{passed_tests}</span>
                     <span class="label">Passed</span>
                 </div>
                 <div class="summary-card bg-red">
-                    <span class="value">{failed_requests}</span>
+                    <span class="value">{failed_tests}</span>
                     <span class="label">Failed</span>
+                </div>
+                <div class="summary-card bg-yellow">
+                    <span class="value">{warnings}</span>
+                    <span class="label">Warnings</span>
                 </div>
             </div>
             <p style="text-align:center; color: #7f8c8d;">Total execution time: {total_time:.2f}s</p>
@@ -298,11 +300,11 @@ def parse_log_file(log_path):
     traceback_re = re.compile(r"^\s+.*|Traceback.*") # Traceback lines
     collection_name_re = re.compile(r"INFO - Collection Name: (.*)") # Regex to get collection name from log
     collection_desc_re = re.compile(r"INFO - Collection Description: (.*)")
-    summary_re = re.compile(r"Summary: (\d+) total, (\d+) success, (\d+) failure")
+    summary_re = re.compile(r"Summary: (\d+) total | \ud83d\udfe2 (\d+) success | \u26a0\ufe0f (\d+) warnings | \ud83d\udd34 (\d+) failure")
 
     collection_name = "Unknown"
     collection_description = ""
-    summary = {'total': 0, 'success': 0, 'failure': 0}
+    summary = {'total': 0, 'success': 0, 'warnings': 0, 'failure': 0}
     start_time = None
     end_time = None
     current_time = None
@@ -489,7 +491,8 @@ def parse_log_file(log_path):
             if match:
                 summary['total'] = int(match.group(1))
                 summary['success'] = int(match.group(2))
-                summary['failure'] = int(match.group(3))
+                summary['warnings'] = int(match.group(3))
+                summary['failure'] = int(match.group(4))
 
             # Update end time for the current execution on each relevant line
             if current_execution and current_time:
@@ -509,7 +512,7 @@ def generate_html_report(collection_name, collection_description, executions, su
     """Generates the HTML file from the parsed data."""
     executions_html = ""
     total_tests = 0
-    passed_tests_count = 0 # Count of individual passed tests
+    passed_tests_count = 0
 
     for exec_data in executions:
         # Determine overall status of the request execution
@@ -518,7 +521,7 @@ def generate_html_report(collection_name, collection_description, executions, su
         
         # Assign CSS class and status text based on outcome
         if has_script_error:
-            status_class = "status-error" # Specific CSS class for script errors
+            status_class = "status-error"
             final_status_code = exec_data['status_code'] if exec_data['status_code'] else 'Error'
             final_status_text = 'Script Error'
         elif has_failed_tests:
@@ -540,10 +543,9 @@ def generate_html_report(collection_name, collection_description, executions, su
         if exec_data['tests']:
             total_tests += len(exec_data['tests'])
             for test in exec_data['tests']:
-                status_icon = "✔" if test['status'] == 'passed' else "❌"
+                status_icon = "\u2714" if test['status'] == 'passed' else "\u274c"
                 status_css = f"assertion-{test['status']}"
                 error_message_html = ""
-                # Include error message detail if test failed
                 if test['status'] == 'failed' and test['message']:
                     error_message_html = f"<div class='assertion-message'><pre>{html.escape(test['message'])}</pre></div>"
                 
@@ -571,15 +573,12 @@ def generate_html_report(collection_name, collection_description, executions, su
             </div>
             """
 
-        # Format Headers and Body safely, handling potential missing data
         req_headers_html = f"<pre class='pre-header'>{html.escape(exec_data.get('req_headers', 'N/A'))}</pre>" if exec_data.get('req_headers') else "<pre>N/A</pre>"
         req_body_html = f"<pre>{html.escape(exec_data.get('req_body', 'N/A'))}</pre>" if exec_data.get('req_body') else "<pre>No request body.</pre>"
-        # Response headers might already be formatted with HTML <br>, handle appropriately
         resp_headers_formatted = exec_data.get('resp_headers', 'N/A')
         resp_headers_html = f"<pre class='pre-header'>{resp_headers_formatted}</pre>" if resp_headers_formatted != 'N/A' else "<pre>N/A</pre>"
         resp_body_html = f"<pre>{html.escape(exec_data.get('resp_body', 'N/A'))}</pre>" if exec_data.get('resp_body') else "<pre>No response body.</pre>"
 
-        # Construct the HTML block for this execution item
         executions_html += f"""
         <details class="execution-item {status_class}">
             <summary>
@@ -616,24 +615,21 @@ def generate_html_report(collection_name, collection_description, executions, su
         </details>
         """
 
-    # Calculate overall success/failure counts based on request outcomes
-    failed_requests_count = sum(1 for e in executions if any(t['status'] == 'failed' for t in e['tests']) or e['script_error'])
-    passed_requests_count = len(executions) - failed_requests_count
+    failed_tests_count = total_tests - passed_tests_count
 
-    # Populate the main HTML template
     final_html = HTML_TEMPLATE.format(
         collection_name=html.escape(collection_name),
         collection_description=html.escape(collection_description),
         execution_date=datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         total_requests=len(executions),
-        total_tests=total_tests, # Total individual tests
-        passed_requests=passed_requests_count, # Based on requests (pass if no failed tests AND no script error)
-        failed_requests=failed_requests_count, # Based on requests (fail if any failed test OR script error)
+        total_tests=total_tests,
+        passed_tests=passed_tests_count,
+        failed_tests=failed_tests_count,
+        warnings=summary.get('warnings', 0),
         total_time=total_time,
         executions_html=executions_html
     )
 
-    # Save the generated HTML to the specified file
     try:
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(final_html)
@@ -644,31 +640,25 @@ def generate_html_report(collection_name, collection_description, executions, su
 
 
 if __name__ == "__main__":
-    # Setup command-line argument parsing
     parser = argparse.ArgumentParser(description="Converts a PyMan log file into an HTML report.")
     parser.add_argument("log_file", help="Path to the PyMan log file.")
     parser.add_argument("output_html", nargs='?', help="Path for the output HTML file (optional).")
 
     args = parser.parse_args()
 
-    # Validate log file existence
     if not os.path.exists(args.log_file):
         print(f"Error: Log file not found: {args.log_file}")
         exit(1)
 
-    # Determine output file path
     output_file = args.output_html
     if not output_file:
-        # Create default filename if not provided
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = f"pyman_report_{timestamp}.html"
 
-    # Execute parsing and HTML generation
     try:
         collection_name, collection_description, executions, summary, total_time = parse_log_file(args.log_file)
         generate_html_report(collection_name, collection_description, executions, summary, total_time, output_file)
     except Exception as e:
-        # Catch-all for any unexpected errors during processing
         print(f"An error occurred while processing the log or generating the report: {e}")
         import traceback
         traceback.print_exc()
