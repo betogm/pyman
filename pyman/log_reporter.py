@@ -150,20 +150,28 @@ HTML_TEMPLATE = """
         }}
         .assertions-list {{ list-style-type: none; padding: 0; }}
         .assertion-item {{
-            padding: 8px 0;
+            padding: 8px 12px;
             border-bottom: 1px dashed #e0e0e0;
             display: flex;
-            align-items: flex-start; /* Align top for long error messages */
+            align-items: flex-start;
+            border-radius: 4px;
+            margin-top: 5px;
         }}
         .assertion-item:last-child {{ border-bottom: none; }}
         .assertion-status {{
             margin-right: 10px;
             font-weight: bold;
             font-size: 1.2em;
-            flex-shrink: 0; /* Prevent icon shrinking */
+            flex-shrink: 0;
         }}
-        .assertion-passed {{ color: #2ecc71; }}
-        .assertion-failed {{ color: #e74c3c; }}
+        .assertion-passed {{
+            color: #27ae60;
+            background-color: #eafaf1;
+        }}
+        .assertion-failed {{
+            color: #c0392b;
+            background-color: #fbeaea;
+        }}
         .assertion-message {{
             color: #e74c3c;
             font-family: monospace;
@@ -280,9 +288,6 @@ def parse_log_file(log_path):
     executions = []
     current_execution = None
     # Flags to track multi-line content
-    in_request_headers = False
-    in_request_body = False
-    in_response_headers = False
     in_response_body = False
     in_script_error = False
 
@@ -293,14 +298,14 @@ def parse_log_file(log_path):
     req_body_start_re = re.compile(r"DEBUG - DATA: (.*)")
     resp_status_re = re.compile(r"INFO - STATUS: (\d+)")
     resp_headers_start_re = re.compile(r"DEBUG - HEADERS \(Response\): (.*)")
-    script_exec_re = re.compile(r"Executing script: (.*)")
+    resp_body_start_re = re.compile(r"DEBUG - BODY \(Response JSON\):")
     test_passed_re = re.compile(r"PASSED: (.*)")
     test_failed_re = re.compile(r"FAILED: (.*)")
     script_error_start_re = re.compile(r"ERROR - Error executing script (.*): (.*)")
     traceback_re = re.compile(r"^\s+.*|Traceback.*") # Traceback lines
-    collection_name_re = re.compile(r"INFO - Collection Name: (.*)") # Regex to get collection name from log
+    collection_name_re = re.compile(r"INFO - Collection Name: (.*)")
     collection_desc_re = re.compile(r"INFO - Collection Description: (.*)")
-    summary_re = re.compile(r"Summary: (\d+) total | \ud83d\udfe2 (\d+) success | \u26a0\ufe0f (\d+) warnings | \ud83d\udd34 (\d+) failure")
+    summary_re = re.compile(r"Summary: (\d+) total.*?(\d+) success.*?(\d+) warnings.*?(\d+) failure")
 
     collection_name = "Unknown"
     collection_description = ""
@@ -311,202 +316,160 @@ def parse_log_file(log_path):
 
     with open(log_path, 'r', encoding='utf-8') as f:
         for line in f:
-            # Try to extract timestamp to calculate time
             try:
                 timestamp_str = line.split(' - ')[0]
                 current_time = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
                 if start_time is None:
                     start_time = current_time
-                end_time = current_time # Update end time with each line
+                end_time = current_time
             except (ValueError, IndexError):
-                pass # Ignore lines without the expected timestamp format
+                pass
 
-            # Extract collection name if available
-            match = collection_name_re.search(line)
-            if match:
-                collection_name = match.group(1).strip()
-                continue # Move to next line after finding collection name
-
-            # Extract collection description
-            match = collection_desc_re.search(line)
-            if match:
-                collection_description = match.group(1).strip()
-                continue
-
-            # Start of a new request execution block
+            # Priority 1: Handle start of a new request, which resets everything.
             match = req_file_re.search(line)
             if match:
-                if current_execution: # Append previous execution if exists
+                if current_execution:
                     executions.append(current_execution)
-                # Initialize data structure for the new execution
                 current_execution = {
                     'name': os.path.basename(match.group(1).strip()),
-                    'file_path': match.group(1).strip(),
-                    'method': 'N/A',
-                    'url': 'N/A',
-                    'req_headers': '',
-                    'req_body': '',
-                    'status_code': None,
-                    'status_text': 'N/A', # Will be added based on status code
-                    'resp_headers': '',
-                    'resp_body': '',
-                    'tests': [],
-                    'script_error': None,
-                    'start_time': current_time,
-                    'end_time': None
+                    'file_path': match.group(1).strip(), 'method': 'N/A', 'url': 'N/A',
+                    'req_headers': '', 'req_body': '', 'status_code': None, 'status_text': 'N/A',
+                    'resp_headers': '', 'resp_body': '', 'tests': [], 'script_error': None,
+                    'start_time': current_time, 'end_time': None
                 }
-                # Reset flags
-                in_request_headers = False
-                in_request_body = False
-                in_response_headers = False
                 in_response_body = False
                 in_script_error = False
                 continue
 
-            # Skip lines until the first request is found
+            # If we haven't started the first request yet, skip.
             if not current_execution:
+                # But check for collection info, which can appear before the first request.
+                match = collection_name_re.search(line)
+                if match:
+                    collection_name = match.group(1).strip()
+                    continue
+                match = collection_desc_re.search(line)
+                if match:
+                    collection_description = match.group(1).strip()
+                    continue
                 continue
 
-            # Capture request details
+            # Priority 2: Handle test results. A test result line can't be anything else.
+            match = test_passed_re.search(line)
+            if match:
+                in_response_body = False # Tests always come after the body
+                current_execution['tests'].append({'status': 'passed', 'name': match.group(1).strip(), 'message': None})
+                continue
+
+            match = test_failed_re.search(line)
+            if match:
+                in_response_body = False # Tests always come after the body
+                fail_detail = match.group(1).strip().split('|', 1)
+                fail_name = fail_detail[0].strip()
+                fail_msg = fail_detail[1].strip() if len(fail_detail) > 1 else "Assertion failed"
+                current_execution['tests'].append({'status': 'failed', 'name': fail_name, 'message': fail_msg})
+                continue
+
+            # Priority 3: Handle script errors, which can be multi-line.
+            match = script_error_start_re.search(line)
+            if match:
+                in_response_body = False # Script errors come after the body
+                in_script_error = True
+                current_execution['script_error'] = f"Error in script {os.path.basename(match.group(1).strip())}: {match.group(2).strip()}\n"
+                continue
+            
+            if in_script_error:
+                if traceback_re.match(line):
+                    current_execution['script_error'] += line.strip() + "\n"
+                else:
+                    in_script_error = False # End of traceback
+                continue
+
+            # Priority 4: Handle the response body, which can be multi-line.
+            if in_response_body:
+                # If the line is clearly not part of a JSON body, stop capturing.
+                if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},", line):
+                    in_response_body = False
+                else:
+                    current_execution['resp_body'] += line
+                    continue
+            
+            # Priority 5: Handle all other single-line log entries.
+            match = resp_body_start_re.search(line)
+            if match:
+                in_response_body = True
+                continue
+
             match = req_dispatch_re.search(line)
             if match:
                 current_execution['method'] = match.group(1)
                 current_execution['url'] = match.group(2).strip()
                 continue
 
-            # Capture Request Headers (potentially multi-line if broken by logger)
             match = req_headers_start_re.search(line)
             if match:
-                # Use eval to convert the dict string back to dict for pretty printing
                 try:
                     headers_dict = eval(match.group(1).strip())
                     current_execution['req_headers'] = json.dumps(headers_dict, indent=2, ensure_ascii=False)
                 except Exception as e:
                     current_execution['req_headers'] = f"Error parsing headers: {match.group(1).strip()}\n{e}"
-                in_request_headers = True # Flag headers started
                 continue
-            # Note: This simple parser doesn't handle headers spanning multiple log lines well.
 
-            # Capture Request Body (assuming it's on one line in the log)
             match = req_body_start_re.search(line)
             if match:
-                # Try decoding if it looks like bytes (b'...')
                 body_str = match.group(1).strip()
                 if body_str.startswith("b'") and body_str.endswith("'"):
-                    try:
-                        body_str = eval(body_str).decode('utf-8', errors='replace')
-                    except Exception:
-                        body_str = body_str # Keep original if decoding fails
-                # Try formatting if it's JSON
+                    try: body_str = eval(body_str).decode('utf-8', errors='replace')
+                    except Exception: pass
                 try:
                     body_json = json.loads(body_str)
                     current_execution['req_body'] = json.dumps(body_json, indent=2, ensure_ascii=False)
                 except json.JSONDecodeError:
-                    current_execution['req_body'] = body_str # Keep as plain text if not JSON
-                in_request_body = True # Flag body captured
+                    current_execution['req_body'] = body_str
                 continue
 
-            # Capture Response Status
             match = resp_status_re.search(line)
             if match:
                 current_execution['status_code'] = int(match.group(1))
-                # Add descriptive text (simplified map)
-                status_map = {
-                    200: "OK", 201: "Created", 204: "No Content",
-                    400: "Bad Request", 401: "Unauthorized", 403: "Forbidden",
-                    404: "Not Found", 422: "Unprocessable Content",
-                    500: "Internal Server Error"
-                }
+                status_map = { 200: "OK", 201: "Created", 204: "No Content", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 422: "Unprocessable Content", 500: "Internal Server Error" }
                 current_execution['status_text'] = status_map.get(current_execution['status_code'], "Unknown Status")
                 continue
 
-            # Capture Response Headers (potentially multi-line)
             match = resp_headers_start_re.search(line)
             if match:
-                 try:
+                try:
                     headers_dict = eval(match.group(1).strip())
-                    # Format as key: value per line for HTML <pre> tag
-                    formatted_headers = "\n".join([f"<strong>{k}:</strong> {v}" for k, v in headers_dict.items()])
-                    current_execution['resp_headers'] = formatted_headers
-                 except Exception as e:
+                    current_execution['resp_headers'] = "\n".join([f"<strong>{k}:</strong> {v}" for k, v in headers_dict.items()])
+                except Exception as e:
                     current_execution['resp_headers'] = f"Error parsing headers: {match.group(1).strip()}\n{e}"
-                 in_response_headers = True # Flag response headers started
-                 continue
-            # Note: Simple handling for multi-line headers.
-
-            # Assume response body comes *after* response headers in the log.
-            # Capture Response Body (can be multi-line)
-            # Check if the line is NOT a typical log line (INFO, DEBUG, etc.)
-            if in_response_headers and not re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} - (INFO|DEBUG|ERROR|WARNING)", line):
-                 # Try to format as JSON
-                 try:
-                     # Clean potential escape characters
-                     clean_line = line.strip().encode('utf-8').decode('unicode_escape')
-                     # Attempt to concatenate if it's multi-line JSON (basic approach)
-                     potential_json = current_execution.get('resp_body_raw', '') + clean_line
-                     body_json = json.loads(potential_json)
-                     # Pretty print JSON
-                     current_execution['resp_body'] = json.dumps(body_json, indent=2, ensure_ascii=False)
-                     current_execution['resp_body_raw'] = potential_json # Store raw for next line concat
-                 except json.JSONDecodeError:
-                     # If not valid JSON, just append the line as plain text
-                     current_execution['resp_body'] = current_execution.get('resp_body', '') + line
-                     current_execution['resp_body_raw'] = current_execution.get('resp_body_raw', '') + line # Store raw
-                 in_response_body = True # Flag we are reading the body
-                 continue
-            elif in_response_body: # If we were reading the body and now encounter a log line, body section ends.
-                in_response_body = False
-                in_response_headers = False # Response section finished
-
-            # Capture test results from post-run scripts
-            match = test_passed_re.search(line)
-            if match:
-                current_execution['tests'].append({'status': 'passed', 'name': match.group(1).strip(), 'message': None})
                 continue
 
-            match = test_failed_re.search(line)
-            if match:
-                fail_detail = match.group(1).strip().split('|', 1) # Split name and message
-                fail_name = fail_detail[0].strip()
-                fail_msg = fail_detail[1].strip() if len(fail_detail) > 1 else "Assertion failed"
-                current_execution['tests'].append({'status': 'failed', 'name': fail_name, 'message': fail_msg})
-                continue
-
-            # Capture script execution errors
-            match = script_error_start_re.search(line)
-            if match:
-                in_script_error = True
-                current_execution['script_error'] = f"Error in script {os.path.basename(match.group(1).strip())}: {match.group(2).strip()}\n"
-                continue
-
-            # Capture traceback for script errors
-            if in_script_error and traceback_re.match(line):
-                current_execution['script_error'] += line.strip() + "\n"
-                continue
-            elif in_script_error: # End of traceback if a non-traceback line appears
-                in_script_error = False
-
-            # Capture final summary line
             match = summary_re.search(line)
             if match:
-                summary['total'] = int(match.group(1))
-                summary['success'] = int(match.group(2))
-                summary['warnings'] = int(match.group(3))
-                summary['failure'] = int(match.group(4))
+                summary['total'] = int(match.group(1) or '0')
+                summary['success'] = int(match.group(2) or '0')
+                summary['warnings'] = int(match.group(3) or '0')
+                summary['failure'] = int(match.group(4) or '0')
+                continue
 
-            # Update end time for the current execution on each relevant line
-            if current_execution and current_time:
-                 current_execution['end_time'] = current_time
+            if current_execution:
+                current_execution['end_time'] = current_time
 
-
-    # Append the last processed execution
     if current_execution:
         executions.append(current_execution)
 
-    # Calculate total time
-    total_time = (end_time - start_time).total_seconds() if start_time and end_time else 0
+    for execution in executions:
+        if execution['resp_body']:
+            try:
+                body_json = json.loads(execution['resp_body'])
+                execution['resp_body'] = json.dumps(body_json, indent=2, ensure_ascii=False)
+            except json.JSONDecodeError:
+                pass
 
+    total_time = (end_time - start_time).total_seconds() if start_time and end_time else 0
     return collection_name, collection_description, executions, summary, total_time
+
+
 
 def generate_html_report(collection_name, collection_description, executions, summary, total_time, output_path):
     """Generates the HTML file from the parsed data."""
@@ -550,8 +513,8 @@ def generate_html_report(collection_name, collection_description, executions, su
                     error_message_html = f"<div class='assertion-message'><pre>{html.escape(test['message'])}</pre></div>"
                 
                 tests_html += f"""
-                <li class="assertion-item">
-                    <span class="assertion-status {status_css}">{status_icon}</span>
+                <li class="assertion-item {status_css}">
+                    <span class="assertion-status">{status_icon}</span>
                     <div>
                         <span>{html.escape(test['name'])}</span>
                         {error_message_html}
