@@ -147,7 +147,7 @@ def process_environment_file(environment_filepath, output_pyman_env_path, log):
     log.info(f"Successfully imported {count} enabled variables to {output_pyman_env_path}.")
 
 
-def process_item(item, current_path, log, folder_counter, request_counter, should_number_folders, should_number_files):
+def process_item(item, current_path, output_path, log, folder_counter, request_counter, should_number_folders, should_number_files, collections_order_list):
     """
     Processes a single item (folder or request) from the Postman collection.
     Returns the updated folder_counter and request_counter.
@@ -180,7 +180,7 @@ def process_item(item, current_path, log, folder_counter, request_counter, shoul
             # Recursively call process_item, passing the current sub-counters
             # and updating them based on the return value.
             sub_folder_counter, sub_request_counter = process_item(
-                sub_item, folder_path, log, sub_folder_counter, sub_request_counter, should_number_folders, should_number_files
+                sub_item, folder_path, output_path, log, sub_folder_counter, sub_request_counter, should_number_folders, should_number_files, collections_order_list
             )
         return folder_counter, request_counter # Return the counters for the current level
 
@@ -195,6 +195,11 @@ def process_item(item, current_path, log, folder_counter, request_counter, shoul
 
         req_filename = f"{req_name}.yaml"
         req_filepath = os.path.join(current_path, req_filename)
+        
+        # Add to collections order list
+        relative_path = os.path.relpath(req_filepath, output_path)
+        collections_order_list.append(relative_path.replace(os.path.sep, '/'))
+        
         log.info(f"Creating request file: {req_filepath}")
         
         req = item['request']
@@ -412,6 +417,7 @@ def main():
 
     # Start recursive processing of items
     items = collection.get('item', [])
+    collections_order_list = []
     
     top_level_folder_counter = 0
     top_level_request_counter = 0
@@ -419,10 +425,37 @@ def main():
     for item in items:
         # process_item now returns the updated counters
         top_level_folder_counter, top_level_request_counter = process_item(
-            item, output_path, log, 
+            item, output_path, output_path, log, 
             top_level_folder_counter, top_level_request_counter,
-            should_number_folders, should_number_files
+            should_number_folders, should_number_files,
+            collections_order_list
         )
+
+    # Create/update the main config.yaml
+    config_filepath = os.path.join(output_path, 'config.yaml')
+    config_data = {}
+
+    # Preserve existing data if config file exists
+    if os.path.exists(config_filepath):
+        with open(config_filepath, 'r', encoding='utf-8') as f:
+            try:
+                config_data = yaml.safe_load(f) or {}
+            except yaml.YAMLError as e:
+                log.warning(f"Could not parse existing config.yaml: {e}. A new one will be created.")
+
+    # Add/update collection info
+    config_data['COLLECTION_NAME'] = info.get('name', 'Converted Postman Collection')
+    config_data['DESCRIPTION'] = info.get('description', {}).get('content', '') if isinstance(info.get('description'), dict) else info.get('description', '')
+
+    # Add/update the collections order
+    if 'COLLECTIONS_ORDER' not in config_data or not isinstance(config_data.get('COLLECTIONS_ORDER'), dict):
+        config_data['COLLECTIONS_ORDER'] = {}
+    config_data['COLLECTIONS_ORDER']['Default'] = collections_order_list
+
+    # Write the config file
+    log.info(f"Writing collection configuration to {config_filepath}")
+    with open(config_filepath, 'w', encoding='utf-8') as f:
+        yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
     log.info("Conversion completed successfully!")
 
