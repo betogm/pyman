@@ -354,7 +354,7 @@ def execute_script(script_path, environment_vars, response, log, pm, shared_scop
     return env_changed, output, script_failed_exception, assertion_error
 
 # --- Request Execution ---
-def execute_request(request_data, current_vars, pm_instance, log):
+def execute_request(request_data, current_vars, pm_instance, log, has_pos_script=False):
     """Executes a single HTTP request based on parsed data."""
     method = request_data['method']
     base_url = substitute_variables(request_data['url'], current_vars, pm_instance, log)
@@ -498,12 +498,15 @@ def execute_request(request_data, current_vars, pm_instance, log):
             status_text = response.reason
             
         status_message = f"STATUS: {status_code} {status_text} ({duration_ms:.0f} ms)"
-        if status_code >= 500:
-            log.error(status_message)
-        elif status_code >= 400:
-            log.warning(status_message)
-        elif status_code > 0:
+        if has_pos_script:
             log.info(status_message)
+        else:
+            if status_code >= 500:
+                log.error(status_message)
+            elif status_code >= 400:
+                log.warning(status_message)
+            elif status_code > 0:
+                log.info(status_message)
         # If status_code is 0 or response is None, an error was already logged.
         
         if response is not None:
@@ -586,14 +589,14 @@ def run_collection(target_path, collection_root, request_files, log, pm):
                 if script_error:
                     request_success = False # Fail if pre-script has an error
 
-                # Main Request
-                response = execute_request(request_data, current_vars, pm, log)
-                if response is not None:
-                    last_response = response # Save for collection-pos-script
-
                 # Request Post-script
                 req_pos_script = req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
                 has_pos_script = os.path.exists(req_pos_script)
+
+                # Main Request
+                response = execute_request(request_data, current_vars, pm, log, has_pos_script)
+                if response is not None:
+                    last_response = response # Save for collection-pos-script
                 
                 env_changed, _, script_error, assertion_error = execute_script(req_pos_script, current_vars, response, log, pm, shared_scope=shared_scope)
                 if env_changed:
@@ -605,9 +608,6 @@ def run_collection(target_path, collection_root, request_files, log, pm):
 
                 if has_pos_script:
 
-                    log.info("-" * 150)
-                    log.info("ASSERTION RESULTS FROM POST-SCRIPT: %s", assertion_error)
-                    # ✅ MODO 1: Há post-script -> só o resultado dos asserts importa
                     if assertion_error:
                         log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Post-script assertions failed.")
                         request_success = False
