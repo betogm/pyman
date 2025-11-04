@@ -157,7 +157,9 @@ def main():
     try:
         run_collection(target_path, collection_root, request_files_to_run, log, pm)
     except Exception as e:
-        log.error(f"An unhandled exception occurred: {e}", exc_info=True)
+        # This exception is raised by run_collection on failure.
+        # The error message is already formatted.
+        log.error(str(e))
         execution_failed = True # Mark the run as failed
     finally:
         # --- Always print log path ---

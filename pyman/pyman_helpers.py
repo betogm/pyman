@@ -42,7 +42,7 @@ class PyManHelpers:
         try:
             condition_func()
             self.log.info(f"  PASSED: {name}")
-        except AssertionError as e:
+        except Exception as e:
             self.log.error(f"  FAILED: {name} | {e}")
 
     def timestamp(self):
