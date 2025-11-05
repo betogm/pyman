@@ -12,18 +12,18 @@ import sys
 import logging # Required to inspect handlers
 
 try:
-    from core_logic import (
+    from .core_logic import (
         setup_logging,
         run_collection,
         get_collection_name,
         load_collection_config,
         get_collection_description
     )
-    from pyman_helpers import PyManHelpers
+    from .pyman_helpers import PyManHelpers
     # Import reporter functions
-    from log_reporter import parse_log_file, generate_html_report
+    from .log_reporter import parse_log_file, generate_html_report
     # Import the Postman importer main function
-    from postman_importer import main as postman_importer_main
+    from .postman_importer import main as postman_importer_main
 except ImportError as e:
     print(f"Import error: {e}")
     print("Ensure that core_logic.py, pyman_helpers.py, log_reporter.py, and postman_importer.py are in the same 'app' directory.")
