@@ -219,24 +219,36 @@ Scripts são arquivos Python que têm acesso a três variáveis globais:
 -   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()` ou `pm.random_adjective()`.
 -   `shared` (objeto): Um objeto especial para compartilhar variáveis e funções entre diferentes scripts dentro da mesma execução de coleção. Isso é particularmente útil para `collection-pre-script.py` configurar dados globais ou funções utilitárias que podem ser acessadas por scripts de pré/pós-requisição individuais.
 
+    Além dos helpers nativos fornecidos pelo objeto `pm`, você pode importar e usar qualquer biblioteca Python padrão ou de terceiros instalada no seu ambiente, como o `Faker` para gerar dados de teste realistas.
+
     **Exemplo: Compartilhando Variáveis e Funções**
 
     ```python
+    # collection-pre-script.py
     # Este script é executado uma vez antes de tudo.
+
+    # Você pode importar qualquer biblioteca Python instalada, como o Faker para gerar dados de teste.
+    from faker import Faker
+    fake = Faker('pt_BR') # Usando a localização em português
 
     log.info("Iniciando o Collection Pre-Script...")
 
-    # 1. Definir uma variável global compartilhada
+    # 1. Gerar dados de teste realistas com o Faker e salvá-los no ambiente
+    environment_vars["nome_novo_usuario"] = fake.name()
+    environment_vars["email_novo_usuario"] = fake.email()
+    log.info(f"Usuário de teste gerado: {environment_vars['nome_novo_usuario']} ({environment_vars['email_novo_usuario']})")
+
+    # 2. Definir uma variável global compartilhada usando os helpers do PyMan
     # Qualquer script subsequente pode ler ou modificar este valor.
     shared.id_sessao_global = pm.random_uuid()
-    log.info(f"ID de Sessão Global definida: {shared.id_sessao_global}")
+    log.info(f"ID de Sessão Global definido: {shared.id_sessao_global}")
 
-    # 2. Definir uma função global compartilhada
+    # 3. Definir uma função global compartilhada
     # Primeiro, defina a função normalmente
-    def get_auth_token(username, password):
+    def obter_token_autenticacao(username, password):
         """
         Uma função de exemplo que simula a obtenção de um token.
-        Em um caso real, você poderia até fazer um request aqui.
+        Em um caso real, você poderia até fazer uma requisição aqui.
         """
         log.info(f"Simulando obtenção de token para: {username}")
         # (Lógica para buscar o token...)
@@ -246,11 +258,11 @@ Scripts são arquivos Python que têm acesso a três variáveis globais:
         shared.ultimo_token_gerado = token
         return token
 
-    # 3. Anexar a função ao objeto 'shared'
-    # Isso torna 'shared.get_auth_token' acessível globalmente.
-    shared.get_auth_token = get_auth_token
+    # 4. Anexar a função ao objeto 'shared'
+    # Isso torna 'shared.obter_token_autenticacao' acessível globalmente.
+    shared.obter_token_autenticacao = obter_token_autenticacao
 
-    # 4. Você também pode definir variáveis de ambiente (isso já funcionava)
+    # 5. Você também pode definir variáveis de ambiente (isso já funcionava)
     environment_vars["inicio_execucao"] = pm.timestamp()
 
     log.info("Collection Pre-Script concluído.")
@@ -264,24 +276,33 @@ Scripts são arquivos Python que têm acesso a três variáveis globais:
 # meu-request-pos-script.py
 
 try:
-    log.info(f"Script POS: ID de Sessão Global do shared: {shared.id_sessao_global}")
+    # 1. Teste simples para o status code usando uma função lambda
+    pm.test("O status code da resposta é 200 OK", lambda: assert response.status_code == 200)
 
-    # Usando uma função compartilhada
+    # Se a requisição foi bem-sucedida, prossiga com testes mais detalhados
     if response.status_code == 200:
-        log.info("Script POS: Requisição OK!")
-        
-        # Exemplo de uso da função compartilhada definida em collection-pre-script.py
-        novo_token = shared.obter_token_autenticacao("usuario_do_pos", "senha_do_pos")
-        log.info(f"Novo token gerado pela função compartilhada: {novo_token}")
-        log.info(f"Último token gerado do escopo shared: {shared.ultimo_token_gerado}")
+        response_body = response.json()
 
-        data = response.json()
-        if 'id' in data:
-            environment_vars['LAST_ID_CRIADO'] = data['id']
+        # 2. Teste mais complexo para a estrutura da resposta usando uma função dedicada
+        def testar_estrutura_do_corpo():
+            assert "id" in response_body, "A resposta deve conter um 'id'"
+            assert "token" in response_body, "A resposta deve conter um 'token'"
+            assert isinstance(response_body["token"], str)
+            assert len(response_body["token"]) > 16, "O token deve ter mais de 16 caracteres"
+        
+        pm.test("O corpo da resposta tem a estrutura correta e um token válido", testar_estrutura_do_corpo)
+
+        # 3. Teste para cabeçalhos usando outra lambda
+        pm.test("O cabeçalho Content-Type é application/json",
+                lambda: "application/json" in response.headers.get("Content-Type", ""))
+
+        # 4. Salvar dados em variáveis de ambiente para as próximas requisições
+        if 'id' in response_body:
+            environment_vars['LAST_ID_CRIADO'] = response_body['id']
             log.info(f"ID salvo no ambiente: {environment_vars['LAST_ID_CRIADO']}")
             
 except Exception as e:
-    log.error(f"Erro no script POS: {e}")
+    log.error(f"Erro no script POS: {e}", exc_info=True)
 
 ```
 
