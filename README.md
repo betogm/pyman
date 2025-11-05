@@ -6,6 +6,18 @@ PyMan: A lightweight, filesystem-based HTTP request runner for CLI. Inspired by 
 
 ## Installation
 
+### For users
+
+To install the latest version directly from GitHub, run:
+
+```console
+[sudo] pip install git+https://github.com/betogm/pyman.git
+```
+
+### For developers
+
+If you have cloned the repository and want to use it for development, follow these steps:
+
 1.  Make sure you have Python 3.7+ installed.
 2.  Create and activate a virtual environment (`venv`).
 
@@ -17,34 +29,50 @@ PyMan: A lightweight, filesystem-based HTTP request runner for CLI. Inspired by 
     source venv/bin/activate
     ```
 
-3.  Install the dependencies (create a `requirements.txt` file if it doesn't exist).
+3.  Install the dependencies.
 
     ```console
     pip install -r requirements.txt
     ```
 
+To run the tool without installing it on your system, use the command `pyman`. This is ideal for development.
+
+If you prefer to install the package locally, you have two options:
+
+-   **Editable mode:** Your changes to the source code will be immediately reflected.
+    ```console
+    pip install -e .
+    ```
+
+-   **Normal installation:**
+    ```console
+    pip install .
+    ```
+
+After installing locally, you can use the `pyman` command directly.
+
 ## How to Use
 
-Execute `pyman.pyman` (inside the `pyman` folder) with the `run` command and the desired target.
+Execute `pyman.pyman` (inside the `pyman` folder) with the `run` command and the desired target. For development, you can also use `pyman`. The examples below use the `pyman` command.
 
 ### Run an entire collection
 
 By default, requests are executed in alphabetical order based on the directory and file structure.
 
 ```console
-python -m pyman.pyman run .
+pyman run .
 ```
 
 ### Run a specific folder
 
 ```console
-python -m pyman.pyman run Example_Collection/get-request
+pyman run Example_Collection/get-request
 ```
 
 ### Run a specific request file
 
 ```console
-python -m pyman.pyman run Example_Collection/post-request/post-data.yaml
+pyman run Example_Collection/post-request/post-data.yaml
 ```
 
 ### Run a collection with a specific order
@@ -52,7 +80,7 @@ python -m pyman.pyman run Example_Collection/post-request/post-data.yaml
 You can define custom execution orders in a `config.yaml` file at the root of your collection. Use the `--collection-order` flag to specify which order to run.
 
 ```console
-python -m pyman.pyman run . --collection-order=TestUpload
+pyman run . --collection-order=TestUpload
 ```
 
 ## Collection Configuration
@@ -319,13 +347,13 @@ PyMan has a built-in command to convert Postman v2.1 collections into the PyMan 
 Use the `import-postman` command, providing the path to your Postman collection and an output directory.
 
 ```console
-python -m pyman.pyman import-postman -c /path/to/your/postman_collection.json -o my_new_pyman_collection
+pyman import-postman -c /path/to/your/postman_collection.json -o my_new_pyman_collection
 ```
 
 To see all available options and get help, run:
 
 ```console
-python -m pyman.pyman import-postman --help
+pyman import-postman --help
 ```
 
 ### Arguments
