@@ -25,26 +25,26 @@ PyMan: Um executor de requisições HTTP leve, baseado em sistema de arquivos, p
 
 ## Como Usar
 
-Execute o `pyman.py` (dentro da pasta `pyman`) com o comando `run` e o alvo desejado.
+Execute o `pyman.pyman` (dentro da pasta `pyman`) com o comando `run` e o alvo desejado.
 
 ### Executar uma coleção inteira
 
 Por padrão, as requisições são executadas em ordem alfabética, com base na estrutura de pastas e arquivos.
 
 ```console
-python pyman/pyman.py run .
+python -m pyman.pyman run .
 ```
 
 ### Executar uma pasta específica
 
 ```console
-python pyman/pyman.py run Example_Collection/get-request
+python -m pyman.pyman run Example_Collection/get-request
 ```
 
 ### Executar um arquivo de requisição específico
 
 ```console
-python pyman/pyman.py run Example_Collection/post-request/post-data.yaml
+python -m pyman.pyman run Example_Collection/post-request/post-data.yaml
 ```
 
 ### Executar uma coleção com uma ordem específica
@@ -52,7 +52,7 @@ python pyman/pyman.py run Example_Collection/post-request/post-data.yaml
 Você pode definir ordens de execução personalizadas em um arquivo `config.yaml` na raiz da sua coleção. Use a flag `--collection-order` para especificar qual ordem executar.
 
 ```console
-python pyman/pyman.py run . --collection-order=TestUpload
+python -m pyman.pyman run . --collection-order=TestUpload
 ```
 
 ## Configuração da Coleção
@@ -315,13 +315,13 @@ O PyMan possui um comando integrado para converter coleções do Postman v2.1 pa
 Use o comando `import-postman`, fornecendo o caminho para a sua coleção do Postman e um diretório de saída.
 
 ```console
-python pyman/pyman.py import-postman -c /caminho/para/sua/postman_collection.json -o minha_nova_colecao_pyman
+python -m pyman.pyman import-postman -c /caminho/para/sua/postman_collection.json -o minha_nova_colecao_pyman
 ```
 
 Para ver todas as opções disponíveis e obter ajuda, execute:
 
 ```console
-python pyman/pyman.py import-postman --help
+python -m pyman.pyman import-postman --help
 ```
 
 ### Argumentos
