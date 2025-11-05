@@ -25,26 +25,26 @@ PyMan: A lightweight, filesystem-based HTTP request runner for CLI. Inspired by 
 
 ## How to Use
 
-Execute `pyman.py` (inside the `pyman` folder) with the `run` command and the desired target.
+Execute `pyman.pyman` (inside the `pyman` folder) with the `run` command and the desired target.
 
 ### Run an entire collection
 
 By default, requests are executed in alphabetical order based on the directory and file structure.
 
 ```console
-python pyman/pyman.py run .
+python -m pyman.pyman run .
 ```
 
 ### Run a specific folder
 
 ```console
-python pyman/pyman.py run Example_Collection/get-request
+python -m pyman.pyman run Example_Collection/get-request
 ```
 
 ### Run a specific request file
 
 ```console
-python pyman/pyman.py run Example_Collection/post-request/post-data.yaml
+python -m pyman.pyman run Example_Collection/post-request/post-data.yaml
 ```
 
 ### Run a collection with a specific order
@@ -52,7 +52,7 @@ python pyman/pyman.py run Example_Collection/post-request/post-data.yaml
 You can define custom execution orders in a `config.yaml` file at the root of your collection. Use the `--collection-order` flag to specify which order to run.
 
 ```console
-python pyman/pyman.py run . --collection-order=TestUpload
+python -m pyman.pyman run . --collection-order=TestUpload
 ```
 
 ## Collection Configuration
@@ -319,13 +319,13 @@ PyMan has a built-in command to convert Postman v2.1 collections into the PyMan 
 Use the `import-postman` command, providing the path to your Postman collection and an output directory.
 
 ```console
-python pyman/pyman.py import-postman -c /path/to/your/postman_collection.json -o my_new_pyman_collection
+python -m pyman.pyman import-postman -c /path/to/your/postman_collection.json -o my_new_pyman_collection
 ```
 
 To see all available options and get help, run:
 
 ```console
-python pyman/pyman.py import-postman --help
+python -m pyman.pyman import-postman --help
 ```
 
 ### Arguments
