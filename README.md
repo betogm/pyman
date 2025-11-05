@@ -291,14 +291,20 @@ except Exception as e:
 
 ## Importing from Postman
 
-PyMan includes a script to convert Postman v2.1 collections into the PyMan format. The script `pyman/postman_importer.py` converts Postman's JSON files into PyMan's YAML-based directory structure.
+PyMan has a built-in command to convert Postman v2.1 collections into the PyMan format. This command converts Postman's JSON files into PyMan's YAML-based directory structure.
 
 ### How to Use the Importer
 
-Run the script from your terminal, providing the path to your Postman collection and an output directory.
+Use the `import-postman` command, providing the path to your Postman collection and an output directory.
 
 ```console
-python pyman/postman_importer.py -c /path/to/your/postman_collection.json -o my_new_pyman_collection
+python pyman/pyman.py import-postman -c /path/to/your/postman_collection.json -o my_new_pyman_collection
+```
+
+To see all available options and get help, run:
+
+```console
+python pyman/pyman.py import-postman --help
 ```
 
 ### Arguments
@@ -306,6 +312,9 @@ python pyman/postman_importer.py -c /path/to/your/postman_collection.json -o my_
 -   `-c`, `--collection`: **(Required)** Path to the Postman collection `.json` file.
 -   `-o`, `--output`: **(Required)** Name of the output directory where the PyMan collection will be created.
 -   `-e`, `--environment`: (Optional) Path to a Postman environment `.json` file. The variables will be converted into a `.environment-variables` file.
+-   `--numbered`: (Optional) Choose whether to add numerical prefixes to folders and files for ordering. Choices: `yes`, `no`. (Default: `yes`).
+-   `--numbered-folders`: (Optional) Specifically control numbering for folders. Overrides `--numbered`. Choices: `yes`, `no`.
+-   `--numbered-files`: (Optional) Specifically control numbering for files. Overrides `--numbered`. Choices: `yes`, `no`.
 
 ### Conversion Details
 

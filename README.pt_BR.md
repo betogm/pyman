@@ -287,14 +287,20 @@ except Exception as e:
 
 ## Importando do Postman
 
-O PyMan inclui um script para converter coleções do Postman v2.1 para o formato do PyMan. O script `pyman/postman_importer.py` converte os arquivos JSON do Postman para a estrutura de diretórios e arquivos YAML do PyMan.
+O PyMan possui um comando integrado para converter coleções do Postman v2.1 para o formato PyMan. Este comando converte os arquivos JSON do Postman para a estrutura de diretórios e arquivos YAML do PyMan.
 
 ### Como Usar o Importador
 
-Execute o script a partir do seu terminal, fornecendo o caminho para a sua coleção do Postman e um diretório de saída.
+Use o comando `import-postman`, fornecendo o caminho para a sua coleção do Postman e um diretório de saída.
 
 ```console
-python pyman/postman_importer.py -c /caminho/para/sua/postman_collection.json -o minha_nova_colecao_pyman
+python pyman/pyman.py import-postman -c /caminho/para/sua/postman_collection.json -o minha_nova_colecao_pyman
+```
+
+Para ver todas as opções disponíveis e obter ajuda, execute:
+
+```console
+python pyman/pyman.py import-postman --help
 ```
 
 ### Argumentos
@@ -302,6 +308,9 @@ python pyman/postman_importer.py -c /caminho/para/sua/postman_collection.json -o
 -   `-c`, `--collection`: **(Obrigatório)** Caminho para o arquivo `.json` da coleção do Postman.
 -   `-o`, `--output`: **(Obrigatório)** Nome do diretório de saída onde a coleção do PyMan será criada.
 -   `-e`, `--environment`: (Opcional) Caminho para um arquivo de ambiente `.json` do Postman. As variáveis serão convertidas para um arquivo `.environment-variables`.
+-   `--numbered`: (Opcional) Escolha se deseja adicionar prefixos numéricos a pastas e arquivos para ordenação. Opções: `yes`, `no`. (Padrão: `yes`).
+-   `--numbered-folders`: (Opcional) Controla especificamente a numeração para pastas. Sobrescreve `--numbered`. Opções: `yes`, `no`.
+-   `--numbered-files`: (Opcional) Controla especificamente a numeração para arquivos. Sobrescreve `--numbered`. Opções: `yes`, `no`.
 
 ### Detalhes da Conversão
 

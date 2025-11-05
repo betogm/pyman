@@ -22,40 +22,18 @@ try:
     from pyman_helpers import PyManHelpers
     # Import reporter functions
     from log_reporter import parse_log_file, generate_html_report
+    # Import the Postman importer main function
+    from postman_importer import main as postman_importer_main
 except ImportError as e:
     print(f"Import error: {e}")
-    print("Ensure that core_logic.py, pyman_helpers.py, and log_reporter.py are in the same 'app' directory.")
+    print("Ensure that core_logic.py, pyman_helpers.py, log_reporter.py, and postman_importer.py are in the same 'app' directory.")
     sys.exit(1)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="PyMan - A CLI HTTP request executor")
-    
-    parser.add_argument(
-        'command',
-        choices=['run'],
-        help="The command to be executed."
-    )
-    parser.add_argument(
-        'target',
-        help="The path to the collection (directory) or request (.yaml) to be executed."
-    )
-    # New argument for generating the report
-    parser.add_argument(
-        '--report',
-        action='store_true', # Defines it as a boolean flag
-        help="Automatically generate an HTML report after execution."
-    )
-
-    parser.add_argument(
-        '--collection-order',
-        type=str,
-        default='Default',
-        help="The name of the execution order from COLLECTIONS_ORDER in config.yaml."
-    )
-
-    args = parser.parse_args()
-
+def handle_run_command(args):
+    """
+    Handles the logic for the 'run' command.
+    """
     # --- Path Resolution ---
     target_path = os.path.abspath(args.target)
     collection_root = ''
@@ -198,6 +176,84 @@ def main():
         # Exit with error code 1 if the collection run failed
         if execution_failed:
             sys.exit(1)
+
+def handle_import_command(args):
+    """
+    Handles the logic for the 'import-postman' command by calling the importer.
+    We need to reconstruct the command-line arguments for the importer.
+    """
+    importer_args = ['-c', args.collection, '-o', args.output]
+    if args.environment:
+        importer_args.extend(['-e', args.environment])
+    if args.numbered:
+        importer_args.extend(['--numbered', args.numbered])
+    if args.numbered_folders:
+        importer_args.extend(['--numbered-folders', args.numbered_folders])
+    if args.numbered_files:
+        importer_args.extend(['--numbered-files', args.numbered_files])
+    
+    # Temporarily replace sys.argv to call the importer's main function
+    original_argv = sys.argv
+    sys.argv = ['postman_importer.py'] + importer_args
+    try:
+        postman_importer_main()
+    finally:
+        sys.argv = original_argv # Restore original argv
+
+def main():
+    parser = argparse.ArgumentParser(description="PyMan - A CLI HTTP request executor and Postman importer.")
+    subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
+
+    # --- 'run' command ---
+    parser_run = subparsers.add_parser('run', help='Execute a PyMan collection or a single request file.')
+    parser_run.add_argument(
+        'target',
+        help="The path to the collection (directory) or request (.yaml) to be executed."
+    )
+    parser_run.add_argument(
+        '--report',
+        action='store_true',
+        help="Automatically generate an HTML report after execution."
+    )
+    parser_run.add_argument(
+        '--collection-order',
+        type=str,
+        default='Default',
+        help="The name of the execution order from COLLECTIONS_ORDER in config.yaml."
+    )
+    parser_run.set_defaults(func=handle_run_command)
+
+    # --- 'import-postman' command ---
+    parser_import = subparsers.add_parser(
+        'import-postman',
+        help='Import a Postman v2.1 collection into the PyMan format.',
+        description='Converts a Postman v2.1 collection file (.json) into the PyMan directory and YAML file structure. It also processes an optional environment file.'
+    )
+    parser_import.add_argument("-c", "--collection", help="Path to the Postman .json collection file.", required=True)
+    parser_import.add_argument("-o", "--output", help="Output directory name for the PyMan collection.", required=True)
+    parser_import.add_argument("-e", "--environment", help="Path to the Postman environment .json file (optional).", required=False, default=None)
+    parser_import.add_argument(
+        "--numbered", 
+        choices=['yes', 'no'], 
+        default='yes', 
+        help="Whether to add numbering to folders and files (default: yes)."
+    )
+    parser_import.add_argument(
+        "--numbered-folders", 
+        choices=['yes', 'no'], 
+        default=None, 
+        help="Whether to add numbering to folders (overrides --numbered)."
+    )
+    parser_import.add_argument(
+        "--numbered-files", 
+        choices=['yes', 'no'], 
+        default=None, 
+        help="Whether to add numbering to files (overrides --numbered)."
+    )
+    parser_import.set_defaults(func=handle_import_command)
+
+    args = parser.parse_args()
+    args.func(args)
 
 
 if __name__ == "__main__":

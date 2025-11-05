@@ -123,7 +123,6 @@ def setup_logging(collection_root, collection_name="pyman_run", collection_descr
     # Console Handler - Logs INFO level and above
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
-    # (MODIFIED) Use ColorFormatter for console output
     ch.setFormatter(ColorFormatter())
     log.addHandler(ch)
 
@@ -305,14 +304,14 @@ def execute_script(script_path, environment_vars, response, log, pm, shared_scop
             'shared': shared_scope
         }
 
-        # Inicializa pm.failed_tests se não existir
+        # Initialize pm.failed_tests if it doesn't exist
         if not hasattr(pm, 'failed_tests'):
             pm.failed_tests = []
 
         with redirect_stdout(script_output):
             exec(compile(script_code, script_path, 'exec'), script_globals)
 
-        # Após execução, verifica se houve falhas de teste registradas
+        # After execution, check if any test failures were registered
         log.debug(f"[DEBUG] pm.failed_tests exists: {hasattr(pm, 'failed_tests')}, value: {getattr(pm, 'failed_tests', None)}")
         if hasattr(pm, 'failed_tests') and pm.failed_tests:
             log.error(f"[DEBUG] Vai lançar AssertionError devido a pm.failed_tests: {pm.failed_tests}")
