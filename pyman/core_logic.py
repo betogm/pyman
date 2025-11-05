@@ -24,8 +24,8 @@ from contextlib import redirect_stdout
 
 # Import helper and parser relative to the 'app' directory
 try:
-    from request_parser import parse_request_file
-    from pyman_helpers import PyManHelpers
+    from .request_parser import parse_request_file
+    from .pyman_helpers import PyManHelpers
 except ImportError as e:
     print(f"Import error in core_logic.py: {e}")
     print("Ensure request_parser.py and pyman_helpers.py are in the same directory.")
