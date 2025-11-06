@@ -25,25 +25,33 @@ class PyManHelpers:
     def __init__(self, log):
         self.log = log
         self._variables = {}
+        self.request_name = None
+        self.passed_tests = []
+        self.failed_tests = []
 
-    def set_variable(self, key, value):
-        """Defines a dynamic variable."""
-        self._variables[key] = value
+    def set_response(self, response):
+        """Sets the response object for the current request."""
+        self.response = response
 
-    def get_variable(self, key):
-        """Gets a dynamic variable."""
-        return self._variables.get(key)
-
-    def test(self, name, condition_func):
+    def test(self, test_name, test_func):
         """
         Emulates Postman's pm.test().
-        Executes an assertion function within a try/except block.
+        Executes an assertion function, logs the result, and tracks statistics.
         """
+        full_test_name_prefix = f"[{self.request_name or 'Unnamed Test'}]"
         try:
-            condition_func()
-            self.log.info(f"  PASSED: {name}")
+            test_func()
+            self.log.info(f"  PASSED: ({full_test_name_prefix}) {test_name}")
+            self.passed_tests.append(f"{full_test_name_prefix} {test_name}")
+        except AssertionError as e:
+            error_message = str(e) if str(e) else "Assertion failed"
+            self.log.error(f"  FAILED: ({full_test_name_prefix}) {test_name} | {error_message}")
+            self.failed_tests.append(f"{full_test_name_prefix} {test_name}: {error_message}")
+            raise  # Re-raise to signal failure to the runner
         except Exception as e:
-            self.log.error(f"  FAILED: {name} | {e}")
+            self.log.error(f"❌ {full_test_name_prefix} {test_name} - ERROR: An unexpected error occurred in the test script: {e}", exc_info=True)
+            self.failed_tests.append(f"{full_test_name_prefix} {test_name}: {e}")
+            raise  # Re-raise to signal failure to the runner
 
     def timestamp(self):
         """Returns the current Unix timestamp in seconds."""

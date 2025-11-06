@@ -311,11 +311,7 @@ def execute_script(script_path, environment_vars, response, log, pm, shared_scop
         with redirect_stdout(script_output):
             exec(compile(script_code, script_path, 'exec'), script_globals)
 
-        # After execution, check if any test failures were registered
-        log.debug(f"[DEBUG] pm.failed_tests exists: {hasattr(pm, 'failed_tests')}, value: {getattr(pm, 'failed_tests', None)}")
-        if hasattr(pm, 'failed_tests') and pm.failed_tests:
-            log.error(f"[DEBUG] Vai lançar AssertionError devido a pm.failed_tests: {pm.failed_tests}")
-            raise AssertionError("Test failures: " + "; ".join(str(msg) for msg in pm.failed_tests))
+
 
     except requests.exceptions.JSONDecodeError as e:
         script_failed_exception = e
@@ -329,15 +325,11 @@ def execute_script(script_path, environment_vars, response, log, pm, shared_scop
         print(error_message) # This will be captured by script_output
         log.error(f"JSONDecodeError in {script_path}: {e}", exc_info=False)
 
-    except AssertionError as e:
-        log.error(f"ASSERTION ERROR in {script_path}: {e}", exc_info=True)
-
-        script_failed_exception = e
-        assertion_error = True
-
     except Exception as e:
         script_failed_exception = e
         log.error(f"Error executing script {script_path}: {e}", exc_info=True)
+        if isinstance(e, AssertionError):
+            assertion_error = True
 
     # Check if the script modified the environment
     env_changed = environment_vars != env_before
@@ -588,55 +580,66 @@ def run_collection(target_path, collection_root, request_files, log, pm):
                 if script_error:
                     request_success = False # Fail if pre-script has an error
 
-                # Request Post-script
+                # Main Request
+
                 req_pos_script = req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
+
                 has_pos_script = os.path.exists(req_pos_script)
 
-                # Main Request
                 response = execute_request(request_data, current_vars, pm, log, has_pos_script)
+
                 if response is not None:
+
                     last_response = response # Save for collection-pos-script
-                
-                env_changed, _, script_error, assertion_error = execute_script(req_pos_script, current_vars, response, log, pm, shared_scope=shared_scope)
-                if env_changed:
+
+                    pm.set_response(response)
+
+
+
+                # Request Post-script
+
+                post_env_changed, _, post_script_error, post_assertion_error = execute_script(req_pos_script, current_vars, response, log, pm, shared_scope=shared_scope)
+
+                if post_env_changed:
+
                     global_env_vars.update(current_vars)
+
                     write_environment_file(collection_root, global_env_vars, log)
 
+
+
                 # --- NEW SUCCESS/FAILURE LOGIC ---
+
                 http_status = response.status_code if response is not None else 0
+
+
 
                 if has_pos_script:
 
-                    if assertion_error:
+                    if post_assertion_error:
                         log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Post-script assertions failed.")
                         request_success = False
-                        results['failure'] += 1
-                    elif script_error is not None:
+
+                    elif post_script_error is not None:
                         log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Post-script execution error.")
                         request_success = False
-                        results['failure'] += 1
-                    else:
-                        # O post-script rodou com sucesso — ignora status HTTP
-                        request_success = True
-                        results['success'] += 1
 
                 else:
+
                     # ⚙️ MODO 2: Sem post-script -> classificar pela resposta HTTP
                     if http_status >= 500:
                         log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Server error {http_status}.")
                         request_success = False
-                        results['failure'] += 1
+
                     elif 400 <= http_status < 500:
                         log.warning(f"⚠️ [{pm.request_name or 'Unnamed Test'}] - WARNING: Client error {http_status}.")
                         results['warnings'] += 1
-                        request_success = True  # warning, mas não falha
+                        # request_success remains True for a warning
+
                     elif http_status == 0:
                         log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: No response received.")
-                        request_success = False
-                        results['failure'] += 1
-                    else:
-                        request_success = True
-                        results['success'] += 1
+
+                    request_success = False
 
         except Exception as e:
             log.error(f"Critical error during processing of {req_file}: {e}", exc_info=True)
@@ -659,7 +662,18 @@ def run_collection(target_path, collection_root, request_files, log, pm):
 
     log.info("-" * 50)
     log.info("Execution finished.")
-    log.info(f"✅ Summary: {results['total']} total | 🟢 {results['success']} success | ⚠️ {results['warnings']} warnings | 🔴 {results['failure']} failure")
+    passed_asserts = len(pm.passed_tests)
+    failed_asserts = len(pm.failed_tests)
+    summary_message = (
+        f"✅ Summary: {results['total']} total requests | "
+        f"🟢 {results['success']} success | "
+        f"⚠️ {results['warnings']} warnings | "
+        f"🔴 {results['failure']} failure\n"
+        f"           Asserts: {passed_asserts + failed_asserts} total | "
+        f"🟢 {passed_asserts} passed | "
+        f"🔴 {failed_asserts} failed"
+    )
+    log.info(summary_message)
     log.info("-" * 50)
 
     # Raise exception if there were failures, so pyman.py can catch it
