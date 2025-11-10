@@ -560,86 +560,60 @@ def run_collection(target_path, collection_root, request_files, log, pm):
         current_vars.update(folder_vars)
 
         response = None
+
         try:
-            # Parse Request File
+
+            # 1. Parse Request File
             try:
                 request_data = parse_request_file(req_file)
-                request_data['file_path'] = req_file # Add path for reference
-                pm.request_name = request_data.get('name', os.path.basename(req_file)) # Set request name for pm
-            except Exception as e:
-                 log.error(f"Failed to parse request file {req_file}: {e}", exc_info=True)
-                 request_success = False
+                request_data['file_path'] = req_file  # Add path for reference
+                pm.request_name = request_data.get('name', os.path.basename(req_file))
 
+            except Exception as e:
+                log.error(f"Failed to parse request file {req_file}: {e}", exc_info=True)
+                request_success = False
+
+            # 2. Execute Pre-script (if parsing was successful)
             if request_success:
-                # Request Pre-script
                 req_pre_script = req_file.replace('.yaml', '-pre-script.py').replace('.yml', '-pre-script.py')
                 env_changed, _, script_error, _ = execute_script(req_pre_script, current_vars, None, log, pm, shared_scope=shared_scope)
+
                 if env_changed:
                     global_env_vars.update(current_vars)
                     write_environment_file(collection_root, global_env_vars, log)
+
                 if script_error:
-                    request_success = False # Fail if pre-script has an error
-
-                # Main Request
-
-                req_pos_script = req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
-
-                has_pos_script = os.path.exists(req_pos_script)
-
-                response = execute_request(request_data, current_vars, pm, log, has_pos_script)
-
-                if response is not None:
-
-                    last_response = response # Save for collection-pos-script
-
-                    pm.set_response(response)
-
-
-
-                # Request Post-script
-
-                post_env_changed, _, post_script_error, post_assertion_error = execute_script(req_pos_script, current_vars, response, log, pm, shared_scope=shared_scope)
-
-                if post_env_changed:
-
-                    global_env_vars.update(current_vars)
-
-                    write_environment_file(collection_root, global_env_vars, log)
-
-
-
-                # --- NEW SUCCESS/FAILURE LOGIC ---
-
-                http_status = response.status_code if response is not None else 0
-
-
-
-                if has_pos_script:
-
-                    if post_assertion_error:
-                        log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Post-script assertions failed.")
-                        request_success = False
-
-                    elif post_script_error is not None:
-                        log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Post-script execution error.")
-                        request_success = False
-
-                else:
-
-                    # ⚙️ MODO 2: Sem post-script -> classificar pela resposta HTTP
-                    if http_status >= 500:
-                        log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Server error {http_status}.")
-                        request_success = False
-
-                    elif 400 <= http_status < 500:
-                        log.warning(f"⚠️ [{pm.request_name or 'Unnamed Test'}] - WARNING: Client error {http_status}.")
-                        results['warnings'] += 1
-                        # request_success remains True for a warning
-
-                    elif http_status == 0:
-                        log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: No response received.")
-
                     request_success = False
+
+                # 3. Execute Main Request and Post-script (if pre-script was successful)
+                if request_success:
+                    req_pos_script = req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
+                    has_pos_script = os.path.exists(req_pos_script)
+                    response = execute_request(request_data, current_vars, pm, log, has_pos_script)
+
+                    if response is not None:
+                        last_response = response
+                        pm.set_response(response)
+
+                    post_env_changed, _, post_script_error, _ = execute_script(req_pos_script, current_vars, response, log, pm, shared_scope=shared_scope)
+
+                    if post_env_changed:
+                        global_env_vars.update(current_vars)
+                        write_environment_file(collection_root, global_env_vars, log)
+
+                    if post_script_error:
+                        request_success = False
+
+                    # 4. HTTP Status Check (if all scripts passed and there's no post-script)
+                    if request_success and not os.path.exists(req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')):
+                        http_status = response.status_code if response is not None else 0
+
+                        if http_status >= 500 or http_status == 0:
+                            log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Server error or no response ({http_status}).")
+                            request_success = False
+                        elif 400 <= http_status < 500:
+                            log.warning(f"⚠️ [{pm.request_name or 'Unnamed Test'}] - WARNING: Client error {http_status}.")
+                            results['warnings'] += 1
 
         except Exception as e:
             log.error(f"Critical error during processing of {req_file}: {e}", exc_info=True)
