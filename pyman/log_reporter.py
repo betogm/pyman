@@ -287,11 +287,10 @@ def parse_log_file(log_path):
     """Parses the log file and extracts execution data."""
     executions = []
     current_execution = None
-    # Flags to track multi-line content
     in_response_body = False
     in_script_error = False
 
-    # Regex patterns to extract key information
+    # Regex patterns
     req_file_re = re.compile(r"Processing request file: (.*)")
     req_dispatch_re = re.compile(r"Dispatching (GET|POST|PUT|DELETE|PATCH) to: (.*)")
     req_headers_start_re = re.compile(r"DEBUG - HEADERS: (.*)")
@@ -302,7 +301,7 @@ def parse_log_file(log_path):
     test_passed_re = re.compile(r"PASSED: (.*)")
     test_failed_re = re.compile(r"FAILED: (.*)")
     script_error_start_re = re.compile(r"ERROR - Error executing script (.*): (.*)")
-    traceback_re = re.compile(r"^\s+.*|Traceback.*") # Traceback lines
+    traceback_re = re.compile(r"^\s+.*|Traceback.*")
     collection_name_re = re.compile(r"INFO - Collection Name: (.*)")
     collection_desc_re = re.compile(r"INFO - Collection Description: (.*)")
     summary_re = re.compile(r"Summary: (\d+) total.*?(\d+) success.*?(\d+) warnings.*?(\d+) failure")
@@ -325,25 +324,26 @@ def parse_log_file(log_path):
             except (ValueError, IndexError):
                 pass
 
-            # Priority 1: Handle start of a new request, which resets everything.
+            # --- Start of new request ---
             match = req_file_re.search(line)
             if match:
                 if current_execution:
                     executions.append(current_execution)
                 current_execution = {
                     'name': os.path.basename(match.group(1).strip()),
-                    'file_path': match.group(1).strip(), 'method': 'N/A', 'url': 'N/A',
-                    'req_headers': '', 'req_body': '', 'status_code': None, 'status_text': 'N/A',
-                    'resp_headers': '', 'resp_body': '', 'tests': [], 'script_error': None,
+                    'file_path': match.group(1).strip(),
+                    'method': 'N/A', 'url': 'N/A',
+                    'req_headers': '', 'req_body': '',
+                    'status_code': None, 'status_text': 'N/A',
+                    'resp_headers': '', 'resp_body': '',
+                    'tests': [], 'script_error': None,
                     'start_time': current_time, 'end_time': None
                 }
                 in_response_body = False
                 in_script_error = False
                 continue
 
-            # If we haven't started the first request yet, skip.
             if not current_execution:
-                # But check for collection info, which can appear before the first request.
                 match = collection_name_re.search(line)
                 if match:
                     collection_name = match.group(1).strip()
@@ -354,47 +354,86 @@ def parse_log_file(log_path):
                     continue
                 continue
 
-            # Priority 2: Handle test results. A test result line can't be anything else.
+            # --- PASSED tests ---
             match = test_passed_re.search(line)
             if match:
-                in_response_body = False # Tests always come after the body
-                current_execution['tests'].append({'status': 'passed', 'name': match.group(1).strip(), 'message': None})
+                in_response_body = False
+                current_execution['tests'].append({
+                    'status': 'passed',
+                    'name': match.group(1).strip(),
+                    'message': None
+                })
                 continue
 
+            # --- FAILED tests ---
             match = test_failed_re.search(line)
             if match:
-                in_response_body = False # Tests always come after the body
-                fail_detail = match.group(1).strip().split('|', 1)
-                fail_name = fail_detail[0].strip()
-                fail_msg = fail_detail[1].strip() if len(fail_detail) > 1 else "Assertion failed"
-                current_execution['tests'].append({'status': 'failed', 'name': fail_name, 'message': fail_msg})
+                in_response_body = False
+
+                # Initiate with the current line
+                raw = match.group(1).strip()
+
+                # While not find "Assertion failed" in text, continue reading next lines
+                while "Assertion failed" not in raw:
+                    pos = f.tell()
+                    next_line = f.readline()
+                    if not next_line:
+                        break  # EOF
+                    # If the next line seems to start a new log (date + time), stop
+                    if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},", next_line):
+                        f.seek(pos)
+                        break
+                    raw += " " + next_line.strip()
+
+                # Normaliza os espaços
+                raw = re.sub(r"\s+", " ", raw).strip()
+
+                # Split name and message
+                if "| Assertion failed" in raw:
+                    parts = raw.split("|", 2)
+                    name_part = parts[0].strip() + " | " + parts[1].strip()
+                    msg_part = "Error"
+                    if len(parts) > 1 and parts[2].strip():
+                        msg_part += " - " + parts[2].strip()
+                else:
+                    name_part = raw
+                    msg_part = "Assertion failed"
+
+                current_execution['tests'].append({
+                    'status': 'failed',
+                    'name': name_part,
+                    'message': msg_part
+                })
                 continue
 
-            # Priority 3: Handle script errors, which can be multi-line.
+
+            # --- Script errors ---
             match = script_error_start_re.search(line)
             if match:
-                in_response_body = False # Script errors come after the body
+                in_response_body = False
                 in_script_error = True
-                current_execution['script_error'] = f"Error in script {os.path.basename(match.group(1).strip())}: {match.group(2).strip()}\n"
+                current_execution['script_error'] = (
+                    f"Error in script {os.path.basename(match.group(1).strip())}: "
+                    f"{match.group(2).strip()}\n"
+                )
                 continue
-            
+
             if in_script_error:
                 if traceback_re.match(line):
                     current_execution['script_error'] += line.strip() + "\n"
                 else:
-                    in_script_error = False # End of traceback
+                    in_script_error = False
                 continue
 
-            # Priority 4: Handle the response body, which can be multi-line.
+            # --- Response body (multi-line) ---
             if in_response_body:
-                # If the line is clearly not part of a JSON body, stop capturing.
                 if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},", line):
                     in_response_body = False
                 else:
                     current_execution['resp_body'] += line
                     continue
-            
-            # Priority 5: Handle all other single-line log entries.
+
+            # --- Detectors ---
             match = resp_body_start_re.search(line)
             if match:
                 in_response_body = True
@@ -419,8 +458,10 @@ def parse_log_file(log_path):
             if match:
                 body_str = match.group(1).strip()
                 if body_str.startswith("b'") and body_str.endswith("'"):
-                    try: body_str = eval(body_str).decode('utf-8', errors='replace')
-                    except Exception: pass
+                    try:
+                        body_str = eval(body_str).decode('utf-8', errors='replace')
+                    except Exception:
+                        pass
                 try:
                     body_json = json.loads(body_str)
                     current_execution['req_body'] = json.dumps(body_json, indent=2, ensure_ascii=False)
@@ -431,7 +472,12 @@ def parse_log_file(log_path):
             match = resp_status_re.search(line)
             if match:
                 current_execution['status_code'] = int(match.group(1))
-                status_map = { 200: "OK", 201: "Created", 204: "No Content", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 422: "Unprocessable Content", 500: "Internal Server Error" }
+                status_map = {
+                    200: "OK", 201: "Created", 204: "No Content",
+                    400: "Bad Request", 401: "Unauthorized",
+                    403: "Forbidden", 404: "Not Found",
+                    422: "Unprocessable Content", 500: "Internal Server Error"
+                }
                 current_execution['status_text'] = status_map.get(current_execution['status_code'], "Unknown Status")
                 continue
 
@@ -439,7 +485,9 @@ def parse_log_file(log_path):
             if match:
                 try:
                     headers_dict = eval(match.group(1).strip())
-                    current_execution['resp_headers'] = "\n".join([f"<strong>{k}:</strong> {v}" for k, v in headers_dict.items()])
+                    current_execution['resp_headers'] = "\n".join(
+                        [f"<strong>{k}:</strong> {v}" for k, v in headers_dict.items()]
+                    )
                 except Exception as e:
                     current_execution['resp_headers'] = f"Error parsing headers: {match.group(1).strip()}\n{e}"
                 continue

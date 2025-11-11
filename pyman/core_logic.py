@@ -529,129 +529,141 @@ def run_collection(target_path, collection_root, request_files, log, pm):
     log.info(f"Target: {target_path}")
 
     global_env_vars = load_environment(collection_root, log)
-    global_env_vars['_collection_root'] = collection_root # Add root path
+    global_env_vars['_collection_root'] = collection_root  # Add root path
 
     results = {'total': 0, 'success': 0, 'failure': 0, 'warnings': 0}
     failed_files = []
-    
-    # Create a shared scope object for all scripts in the collection
+
+    # Shared scope for all scripts
     shared_scope = type("SharedScope", (object,), {})()
 
-    # --- Execute Collection Pre-script (ONCE) ---
+    # --- Collection Pre-script ---
     collection_pre_script = os.path.join(collection_root, 'collection-pre-script.py')
     if os.path.exists(collection_pre_script):
         log.info("-" * 50)
-        env_changed, _, _, _ = execute_script(collection_pre_script, global_env_vars, None, log, pm, shared_scope=shared_scope)
+        env_changed, _, _, _ = execute_script(
+            collection_pre_script, global_env_vars, None, log, pm, shared_scope=shared_scope
+        )
         if env_changed:
             write_environment_file(collection_root, global_env_vars, log)
 
-    last_response = None # To hold the response of the last executed request
+    last_response = None
+    prev_failed_count = 0  # To track new failed asserts
+
     for req_file in request_files:
         log.info("-" * 50)
         log.info(f"Processing request file: {req_file}")
         results['total'] += 1
-        request_success = True # Assume success until proven otherwise
+        request_success = True
 
-        # Use a copy for the request to keep global env clean between requests
         current_vars = global_env_vars.copy()
-        
-        folder_path = os.path.dirname(req_file)
-        folder_vars = load_folder_config(folder_path, log)
+        folder_vars = load_folder_config(os.path.dirname(req_file), log)
         current_vars.update(folder_vars)
 
-        response = None
-
         try:
-
-            # 1. Parse Request File
+            # --- Parse Request File ---
             try:
                 request_data = parse_request_file(req_file)
-                request_data['file_path'] = req_file  # Add path for reference
+                request_data['file_path'] = req_file
                 pm.request_name = request_data.get('name', os.path.basename(req_file))
-
             except Exception as e:
                 log.error(f"Failed to parse request file {req_file}: {e}", exc_info=True)
                 request_success = False
 
-            # 2. Execute Pre-script (if parsing was successful)
+            # --- Pre-script ---
             if request_success:
-                req_pre_script = req_file.replace('.yaml', '-pre-script.py').replace('.yml', '-pre-script.py')
-                env_changed, _, script_error, _ = execute_script(req_pre_script, current_vars, None, log, pm, shared_scope=shared_scope)
-
+                pre_script = req_file.replace('.yaml', '-pre-script.py').replace('.yml', '-pre-script.py')
+                env_changed, _, script_error, _ = execute_script(
+                    pre_script, current_vars, None, log, pm, shared_scope=shared_scope
+                )
                 if env_changed:
                     global_env_vars.update(current_vars)
                     write_environment_file(collection_root, global_env_vars, log)
-
                 if script_error:
                     request_success = False
 
-                # 3. Execute Main Request and Post-script (if pre-script was successful)
-                if request_success:
-                    req_pos_script = req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
-                    has_pos_script = os.path.exists(req_pos_script)
-                    response = execute_request(request_data, current_vars, pm, log, has_pos_script)
+            # --- Request + Post-script ---
+            if request_success:
+                pos_script = req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
+                has_pos_script = os.path.exists(pos_script)
+                response = execute_request(request_data, current_vars, pm, log, has_pos_script)
 
-                    if response is not None:
-                        last_response = response
-                        pm.set_response(response)
+                if response is not None:
+                    last_response = response
+                    pm.set_response(response)
 
-                    post_env_changed, _, post_script_error, _ = execute_script(req_pos_script, current_vars, response, log, pm, shared_scope=shared_scope)
+                post_env_changed, _, post_script_error, _ = execute_script(
+                    pos_script, current_vars, response, log, pm, shared_scope=shared_scope
+                )
+                if post_env_changed:
+                    global_env_vars.update(current_vars)
+                    write_environment_file(collection_root, global_env_vars, log)
+                if post_script_error:
+                    request_success = False
 
-                    if post_env_changed:
-                        global_env_vars.update(current_vars)
-                        write_environment_file(collection_root, global_env_vars, log)
-
-                    if post_script_error:
+                # --- HTTP Status Check (if no post-script) ---
+                if request_success and not has_pos_script:
+                    http_status = response.status_code if response else 0
+                    if http_status >= 500 or http_status == 0:
+                        log.error(f"❌ [{pm.request_name}] - FAILED: Server error or no response ({http_status}).")
                         request_success = False
-
-                    # 4. HTTP Status Check (if all scripts passed and there's no post-script)
-                    if request_success and not os.path.exists(req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')):
-                        http_status = response.status_code if response is not None else 0
-
-                        if http_status >= 500 or http_status == 0:
-                            log.error(f"❌ [{pm.request_name or 'Unnamed Test'}] - FAILED: Server error or no response ({http_status}).")
-                            request_success = False
-                        elif 400 <= http_status < 500:
-                            log.warning(f"⚠️ [{pm.request_name or 'Unnamed Test'}] - WARNING: Client error {http_status}.")
-                            results['warnings'] += 1
+                    elif 400 <= http_status < 500:
+                        log.warning(f"⚠️ [{pm.request_name}] - WARNING: Client error {http_status}.")
+                        results['warnings'] += 1
 
         except Exception as e:
             log.error(f"Critical error during processing of {req_file}: {e}", exc_info=True)
             request_success = False
 
+        # --- Count Request Result ---
         if request_success:
             results['success'] += 1
         else:
             results['failure'] += 1
             failed_files.append(req_file)
 
-    # --- Execute Collection Post-script (ONCE) ---
+        # --- Check for new failed asserts in this request ---
+        if len(pm.failed_tests) > prev_failed_count:
+            failed_files.append(req_file)
+        prev_failed_count = len(pm.failed_tests)
+
+    # --- Collection Post-script ---
     collection_pos_script = os.path.join(collection_root, 'collection-pos-script.py')
     if os.path.exists(collection_pos_script):
         log.info("-" * 50)
-        # Use the global environment and the last response from the loop
-        env_changed, _, _, _ = execute_script(collection_pos_script, global_env_vars, last_response, log, pm, shared_scope=shared_scope)
+        env_changed, _, _, _ = execute_script(
+            collection_pos_script, global_env_vars, last_response, log, pm, shared_scope=shared_scope
+        )
         if env_changed:
             write_environment_file(collection_root, global_env_vars, log)
 
+    # --- Summary ---
     log.info("-" * 50)
     log.info("Execution finished.")
-    passed_asserts = len(pm.passed_tests)
-    failed_asserts = len(pm.failed_tests)
+
+    # Adiciona asserts ao summary (mantendo a mesma lógica anterior)
+    results['success'] += len(pm.passed_tests)
+    results['failure'] += len(pm.failed_tests)
+    total_asserts = len(pm.passed_tests) + len(pm.failed_tests)
+
     summary_message = (
         f"✅ Summary: {results['total']} total requests | "
         f"🟢 {results['success']} success | "
         f"⚠️ {results['warnings']} warnings | "
         f"🔴 {results['failure']} failure\n"
-        f"           Asserts: {passed_asserts + failed_asserts} total | "
-        f"🟢 {passed_asserts} passed | "
-        f"🔴 {failed_asserts} failed"
+        f"           Asserts: {total_asserts} total | "
+        f"🟢 {len(pm.passed_tests)} passed | "
+        f"🔴 {len(pm.failed_tests)} failed"
     )
     log.info(summary_message)
     log.info("-" * 50)
 
-    # Raise exception if there were failures, so pyman.py can catch it
+    # --- Raise Exception if Failures ---
     if results['failure'] > 0:
-        failed_files_str = "\n".join([f'  - {os.path.relpath(f, collection_root)}' for f in set(failed_files)])
+        if failed_files:
+            failed_files_str = "\n".join(
+                [f"  - {os.path.relpath(f, collection_root)}" for f in set(failed_files)]
+            )
+        else:
+            failed_files_str = "  (only assertion failures)"
         raise Exception(f"{results['failure']} request(s) failed:\n{failed_files_str}")
-
