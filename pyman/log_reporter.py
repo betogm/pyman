@@ -314,7 +314,11 @@ def parse_log_file(log_path):
     current_time = None
 
     with open(log_path, 'r', encoding='utf-8') as f:
-        for line in f:
+        while True:
+            line = f.readline()
+            if not line:
+                break  # EOF
+
             try:
                 timestamp_str = line.split(' - ')[0]
                 current_time = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
@@ -516,7 +520,6 @@ def parse_log_file(log_path):
 
     total_time = (end_time - start_time).total_seconds() if start_time and end_time else 0
     return collection_name, collection_description, executions, summary, total_time
-
 
 
 def generate_html_report(collection_name, collection_description, executions, summary, total_time, output_path):
