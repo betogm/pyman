@@ -1,11 +1,32 @@
 COLLECTION_NAME: "Example Collection"
 DESCRIPTION: "A collection of example requests for demonstration purposes."
 COLLECTIONS_ORDER:
+  # The 'Default' order runs all requests in a logical sequence.
   Default:
-    - post-request/upload-file.yaml
     - get-request/get-data.yaml
     - post-request/post-data.yaml
+    - post-request/upload-file.yaml
+    - put-request/put-data.yaml
+    - patch-request/patch-data.yaml
+    - delete-request/delete-data.yaml
+    - other-requests/head-request.yaml
+    - other-requests/options-request.yaml
+    - other-requests/post-xml-request.yaml
+
+  # Old order, kept for reference
+  # Default:
+  #   - post-request/upload-file.yaml
+  #   - get-request/get-data.yaml
+  #   - post-request/post-data.yaml
+  
+  # Specific orders for testing subsets of the collection
   TestUpload:
     - post-request/upload-file.yaml
   TestGet:
     - get-request/get-data.yaml
+  TestPut:
+    - put-request/put-data.yaml
+  TestPatch:
+    - patch-request/patch-data.yaml
+  TestDelete:
+    - delete-request/delete-data.yaml

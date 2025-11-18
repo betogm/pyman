@@ -1,12 +1,13 @@
-# Este é o novo formato YAML para a requisição GET
-# O arquivo .http correspondente pode ser removido.
+# This is the YAML format for a GET request.
+# It's a simple request to a test endpoint.
 
 request:
   method: GET
   url: "{{BASE_URL}}/get"
 
+# Parameters sent in the URL query string.
 params:
-  param1: "valor"
+  param1: "value"
   random: "{{pm.random_int(1, 100)}}"
 
 authentication:
@@ -17,5 +18,5 @@ headers:
   User-Agent: "{{USER_AGENT}}"
   X-Request-Name: "Get Data"
 
-# 'body' pode ser omitido para requisições GET
+# 'body' is omitted for GET requests as it's not used.
 body: ""

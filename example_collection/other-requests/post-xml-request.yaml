@@ -1,0 +1,19 @@
+# This is an example of a POST request with an XML body.
+
+request:
+  method: POST
+  url: "{{BASE_URL}}/post"
+
+headers:
+  Content-Type: "application/xml"
+  User-Agent: "{{USER_AGENT}}"
+
+body: |
+  <?xml version="1.0" encoding="UTF-8"?>
+  <data>
+    <item>
+      <name>XML Test Item</name>
+      <value>{{pm.random_int(1, 100)}}</value>
+    </item>
+    <timestamp>{{pm.iso_timestamp}}</timestamp>
+  </data>
