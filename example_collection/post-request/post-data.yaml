@@ -1,5 +1,5 @@
-# Este é o novo formato YAML para a requisição POST
-# O arquivo .http correspondente pode ser removido.
+# This is the YAML format for a POST request with a JSON body.
+# It sends structured data to a test endpoint.
 
 request:
   method: POST
@@ -13,11 +13,11 @@ headers:
   X-Random-Adjective: "{{pm.random_adjective}}"
   X-Last-IP: "{{LAST_ORIGIN_IP}}"
 
-# Use o pipe | para definir um bloco de texto literal (como JSON)
+# Use the pipe | to define a literal text block (like this JSON).
 body: |
   {
-      "title": "Instrumento Teste - {{pm.random_noun}}",
-      "abrev": "it",
+      "title": "Test Item - {{pm.random_noun}}",
+      "abbreviation": "ti",
       "generated_id": {{pm.random_int(1000, 9999)}},
       "source_ip_from_get": "{{LAST_ORIGIN_IP}}"
   }

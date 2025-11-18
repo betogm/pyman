@@ -1,0 +1,14 @@
+# This is an example of a HEAD request.
+# HEAD requests are identical to GET requests, but the server does not return a message body.
+# They are useful for checking resource metadata, like headers, without transferring the full content.
+
+request:
+  method: HEAD
+  url: "{{BASE_URL}}/get"
+
+authentication:
+  bearer_token: "{{AUTH_TOKEN}}"
+
+headers:
+  User-Agent: "{{USER_AGENT}}"
+  X-Request-Purpose: "Check resource metadata"

@@ -1,0 +1,21 @@
+# This is an example of a PUT request.
+# PUT requests are typically used to update a resource completely.
+
+request:
+  method: PUT
+  url: "{{BASE_URL}}/put"
+
+authentication:
+  bearer_token: "{{AUTH_TOKEN}}"
+
+headers:
+  Content-Type: "application/json"
+  X-Request-Purpose: "Update existing data"
+
+body: |
+  {
+    "id": {{pm.random_int(1, 100)}},
+    "title": "Updated Item - {{pm.random_adjective}} {{pm.random_noun}}",
+    "status": "completed",
+    "updated_by": "PyMan-Runner"
+  }

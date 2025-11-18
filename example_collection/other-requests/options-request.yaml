@@ -1,0 +1,11 @@
+# This is an example of an OPTIONS request.
+# OPTIONS requests are used to describe the communication options for the target resource.
+# The response may include an 'Allow' header indicating the supported HTTP methods.
+
+request:
+  method: OPTIONS
+  url: "{{BASE_URL}}/post"
+
+headers:
+  User-Agent: "{{USER_AGENT}}"
+  X-Request-Purpose: "Query server capabilities"

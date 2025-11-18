@@ -1,0 +1,19 @@
+# This is an example of a PATCH request.
+# PATCH requests are used for partial updates to a resource.
+
+request:
+  method: PATCH
+  url: "{{BASE_URL}}/patch"
+
+authentication:
+  bearer_token: "{{AUTH_TOKEN}}"
+
+headers:
+  Content-Type: "application/json"
+  X-Request-Purpose: "Partially update data"
+
+body: |
+  {
+    "status": "archived",
+    "last_modified": "{{pm.iso_timestamp}}"
+  }

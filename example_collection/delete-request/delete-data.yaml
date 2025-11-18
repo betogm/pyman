@@ -1,0 +1,20 @@
+# This is an example of a DELETE request.
+# DELETE requests are used to remove a resource.
+
+request:
+  method: DELETE
+  url: "{{BASE_URL}}/delete"
+
+authentication:
+  bearer_token: "{{AUTH_TOKEN}}"
+
+headers:
+  X-Request-Purpose: "Delete a resource"
+
+# DELETE requests typically do not have a body, but httpbin.org/delete
+# will show the body if one is sent. We will send a small one for demonstration.
+body: |
+  {
+    "id": {{pm.random_int(1, 100)}},
+    "reason": "Cleanup of test data"
+  }
