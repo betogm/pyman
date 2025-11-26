@@ -544,7 +544,15 @@ def execute_request(request_data, current_vars, pm_instance, log, has_pos_script
             except Exception as e:
                 log.warning(f"Error closing file handle: {e}")
 
-    return response
+    request_details = {
+        'method': method,
+        'url': url,
+        'headers': headers,
+        'body': data if data else (json_payload if json_payload else None),
+        'files': [f for f in files.keys()] if files else []
+    }
+
+    return response, request_details
 
 # --- Collection Runner ---
 def run_collection(target_path, collection_root, request_files, log, pm):
@@ -574,15 +582,37 @@ def run_collection(target_path, collection_root, request_files, log, pm):
     last_response = None
     prev_failed_count = 0  # To track new failed asserts
 
+    # --- Report Data Initialization ---
+    report_data = {
+        'collection_name': get_collection_name(collection_root),
+        'collection_description': get_collection_description(collection_root),
+        'execution_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'executions': [],
+        'summary': {}
+    }
+    start_time_total = time.time()
+
     for req_file in request_files:
         log.info("-" * 50)
         log.info(f"Processing request file: {req_file}")
         results['total'] += 1
         request_success = True
+        
+        # Track tests for this request
+        start_passed_count = len(pm.passed_tests)
+        start_failed_count = len(pm.failed_tests)
 
         current_vars = global_env_vars.copy()
         folder_vars = load_folder_config(os.path.dirname(req_file), log)
         current_vars.update(folder_vars)
+
+        execution_record = {
+            'name': os.path.basename(req_file),
+            'file_path': req_file,
+            'start_time': datetime.now().isoformat(),
+            'tests': [],
+            'script_error': None
+        }
 
         try:
             # --- Parse Request File ---
@@ -590,9 +620,11 @@ def run_collection(target_path, collection_root, request_files, log, pm):
                 request_data = parse_request_file(req_file)
                 request_data['file_path'] = req_file
                 pm.request_name = request_data.get('name', os.path.basename(req_file))
+                execution_record['name'] = pm.request_name
             except Exception as e:
                 log.error(f"Failed to parse request file {req_file}: {e}", exc_info=True)
                 request_success = False
+                execution_record['script_error'] = f"Failed to parse request file: {e}"
 
             # --- Pre-script ---
             if request_success:
@@ -605,16 +637,27 @@ def run_collection(target_path, collection_root, request_files, log, pm):
                     write_environment_file(collection_root, global_env_vars, log)
                 if script_error:
                     request_success = False
+                    execution_record['script_error'] = f"Pre-script error: {script_error}"
 
             # --- Request + Post-script ---
             if request_success:
                 pos_script = req_file.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
                 has_pos_script = os.path.exists(pos_script)
-                response = execute_request(request_data, current_vars, pm, log, has_pos_script)
-
+                response, request_details = execute_request(request_data, current_vars, pm, log, has_pos_script)
+                
+                # Populate execution record with request details
+                execution_record.update(request_details)
+                
                 if response is not None:
                     last_response = response
                     pm.set_response(response)
+                    execution_record['status_code'] = response.status_code
+                    execution_record['status_text'] = response.reason
+                    execution_record['resp_headers'] = dict(response.headers)
+                    try:
+                        execution_record['resp_body'] = response.json()
+                    except:
+                        execution_record['resp_body'] = response.text
 
                 post_env_changed, _, post_script_error, _ = execute_script(
                     pos_script, current_vars, response, log, pm, shared_scope=shared_scope
@@ -624,6 +667,7 @@ def run_collection(target_path, collection_root, request_files, log, pm):
                     write_environment_file(collection_root, global_env_vars, log)
                 if post_script_error:
                     request_success = False
+                    execution_record['script_error'] = f"Post-script error: {post_script_error}"
 
                 # --- HTTP Status Check (if no post-script) ---
                 if request_success and not has_pos_script:
@@ -638,6 +682,30 @@ def run_collection(target_path, collection_root, request_files, log, pm):
         except Exception as e:
             log.error(f"Critical error during processing of {req_file}: {e}", exc_info=True)
             request_success = False
+            execution_record['script_error'] = f"Critical error: {e}"
+
+        # --- Collect Tests for this Request ---
+        # Passed tests
+        for t in pm.passed_tests[start_passed_count:]:
+            # t is "Prefix TestName"
+            test_name = t.split('] ', 1)[1] if '] ' in t else t
+            execution_record['tests'].append({'name': test_name, 'status': 'passed'})
+        
+        # Failed tests
+        for t in pm.failed_tests[start_failed_count:]:
+            # t is "Prefix TestName: Message"
+            if ': ' in t:
+                parts = t.split(': ', 1)
+                full_name = parts[0]
+                message = parts[1]
+                test_name = full_name.split('] ', 1)[1] if '] ' in full_name else full_name
+            else:
+                test_name = t
+                message = "Unknown error"
+            execution_record['tests'].append({'name': test_name, 'status': 'failed', 'message': message})
+
+        execution_record['end_time'] = datetime.now().isoformat()
+        report_data['executions'].append(execution_record)
 
         # --- Count Request Result ---
         if request_success:
@@ -648,7 +716,8 @@ def run_collection(target_path, collection_root, request_files, log, pm):
 
         # --- Check for new failed asserts in this request ---
         if len(pm.failed_tests) > prev_failed_count:
-            failed_files.append(req_file)
+            if req_file not in failed_files: # Avoid double counting if script error already failed it
+                failed_files.append(req_file)
         prev_failed_count = len(pm.failed_tests)
 
     # --- Collection Post-script ---
@@ -669,6 +738,28 @@ def run_collection(target_path, collection_root, request_files, log, pm):
     results['success'] += len(pm.passed_tests)
     results['failure'] += len(pm.failed_tests)
     total_asserts = len(pm.passed_tests) + len(pm.failed_tests)
+    
+    report_data['summary'] = results
+    report_data['total_time'] = time.time() - start_time_total
+
+    # --- Write JSON Report ---
+    try:
+        # Use the same timestamp/naming convention as the log file if possible
+        # But here we don't have the log filename easily accessible unless we pass it or reconstruct it.
+        # We'll use a generic name pattern in the logs directory.
+        log_dir = os.path.join(collection_root, 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_collection_name = re.sub(r'\W+', '_', report_data['collection_name'])
+        report_filename = f"report_{safe_collection_name}_{timestamp}.json"
+        report_path = os.path.join(log_dir, report_filename)
+        
+        with open(report_path, 'w', encoding='utf-8') as f:
+            json.dump(report_data, f, indent=2, ensure_ascii=False, default=str)
+        log.info(f"JSON Report generated at: {report_path}")
+        
+    except Exception as e:
+        log.error(f"Failed to write JSON report: {e}")
 
     summary_message = (
         f"✅ Summary: {results['total']} total requests | "
