@@ -300,6 +300,7 @@ def parse_log_file(log_path):
     resp_body_start_re = re.compile(r"DEBUG - BODY \(Response JSON\):")
     test_passed_re = re.compile(r"PASSED: (.*)")
     test_failed_re = re.compile(r"FAILED: (.*)")
+    custom_failure_re = re.compile(r"❌ (.*) - FAILURE: (.*)")
     script_error_start_re = re.compile(r"ERROR - Error executing script (.*): (.*)")
     traceback_re = re.compile(r"^\s+.*|Traceback.*")
     collection_name_re = re.compile(r"INFO - Collection Name: (.*)")
@@ -407,6 +408,17 @@ def parse_log_file(log_path):
                     'status': 'failed',
                     'name': name_part,
                     'message': msg_part
+                })
+                continue
+
+            # --- Custom FAILURE tests ---
+            match = custom_failure_re.search(line)
+            if match:
+                in_response_body = False
+                current_execution['tests'].append({
+                    'status': 'failed',
+                    'name': match.group(1).strip(),
+                    'message': match.group(2).strip()
                 })
                 continue
 
