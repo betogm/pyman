@@ -665,15 +665,27 @@ def generate_html_report(collection_name, collection_description, executions, su
         exit(1)
 
 
+def load_json_report(json_path):
+    """Loads execution data from a JSON report file."""
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return (
+        data.get('collection_name', 'Unknown'),
+        data.get('collection_description', ''),
+        data.get('executions', []),
+        data.get('summary', {}),
+        data.get('total_time', 0)
+    )
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Converts a PyMan log file into an HTML report.")
-    parser.add_argument("log_file", help="Path to the PyMan log file.")
+    parser = argparse.ArgumentParser(description="Converts a PyMan log file or JSON report into an HTML report.")
+    parser.add_argument("input_file", help="Path to the PyMan log file (.log) or JSON report (.json).")
     parser.add_argument("output_html", nargs='?', help="Path for the output HTML file (optional).")
 
     args = parser.parse_args()
 
-    if not os.path.exists(args.log_file):
-        print(f"Error: Log file not found: {args.log_file}")
+    if not os.path.exists(args.input_file):
+        print(f"Error: Input file not found: {args.input_file}")
         exit(1)
 
     output_file = args.output_html
@@ -682,10 +694,36 @@ if __name__ == "__main__":
         output_file = f"pyman_report_{timestamp}.html"
 
     try:
-        collection_name, collection_description, executions, summary, total_time = parse_log_file(args.log_file)
+        if args.input_file.endswith('.json'):
+            print(f"Loading data from JSON report: {args.input_file}")
+            collection_name, collection_description, executions, summary, total_time = load_json_report(args.input_file)
+        else:
+            # It's a log file. Check if a corresponding JSON exists.
+            # Assuming naming convention: run_COLLECTION_TIMESTAMP.log -> report_COLLECTION_TIMESTAMP.json
+            # Or just look for any .json in the same dir with the same timestamp?
+            # Let's try to infer the json path.
+            log_dir = os.path.dirname(args.input_file)
+            log_filename = os.path.basename(args.input_file)
+            
+            # Try to find a matching JSON report
+            json_path = None
+            if log_filename.startswith("run_") and log_filename.endswith(".log"):
+                # run_foo_2023... .log -> report_foo_2023... .json
+                json_filename = log_filename.replace("run_", "report_", 1).replace(".log", ".json")
+                candidate = os.path.join(log_dir, json_filename)
+                if os.path.exists(candidate):
+                    json_path = candidate
+            
+            if json_path:
+                print(f"Found corresponding JSON report: {json_path}. Using it instead of parsing log.")
+                collection_name, collection_description, executions, summary, total_time = load_json_report(json_path)
+            else:
+                print(f"Parsing log file: {args.input_file}")
+                collection_name, collection_description, executions, summary, total_time = parse_log_file(args.input_file)
+
         generate_html_report(collection_name, collection_description, executions, summary, total_time, output_file)
     except Exception as e:
-        print(f"An error occurred while processing the log or generating the report: {e}")
+        print(f"An error occurred while processing the input or generating the report: {e}")
         import traceback
         traceback.print_exc()
         exit(1)
