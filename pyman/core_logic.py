@@ -46,6 +46,19 @@ class Color:
     BOLD = "\033[1m"
     RESET = "\033[0m"
 
+class ErrorWatcherHandler(logging.Handler):
+    """
+    A custom handler that watches for ERROR level logs.
+    Used to detect if a script logged an error even if it didn't raise an exception.
+    """
+    def __init__(self):
+        super().__init__()
+        self.has_errors = False
+
+    def emit(self, record):
+        if record.levelno >= logging.ERROR:
+            self.has_errors = True
+
 class ColorFormatter(logging.Formatter):
     """Custom formatter to add colors to console log messages."""
     
@@ -82,7 +95,7 @@ class ColorFormatter(logging.Formatter):
         
         # Apply special color for FAILED (which is an ERROR level)
         elif record.levelno == logging.ERROR:
-             if "FAILED:" in record.message or "Error executing script" in record.message:
+             if "FAILED:" in record.message or "FAILURE:" in record.message or "Error executing script" in record.message:
                  # Make errors bold red
                  message = f"{Color.BOLD}{Color.RED}ERROR: {record.message}{Color.RESET}"
 
@@ -287,6 +300,10 @@ def execute_script(script_path, environment_vars, response, log, pm, shared_scop
     script_failed_exception = None
     assertion_error = False
     
+    # Watch for errors logged by the script
+    error_watcher = ErrorWatcherHandler()
+    log.addHandler(error_watcher)
+
     try:
         with open(script_path, 'r', encoding='utf-8') as f:
             script_code = f.read()
@@ -330,6 +347,9 @@ def execute_script(script_path, environment_vars, response, log, pm, shared_scop
         log.error(f"Error executing script {script_path}: {e}", exc_info=True)
         if isinstance(e, AssertionError):
             assertion_error = True
+    
+    finally:
+        log.removeHandler(error_watcher)
 
     # Check if the script modified the environment
     env_changed = environment_vars != env_before
@@ -340,6 +360,10 @@ def execute_script(script_path, environment_vars, response, log, pm, shared_scop
     # Also log the script's captured output to the file for debugging
     if output.strip():
         log.debug(f"--- Script Output ---\n{output.strip()}\n---------------------")
+
+    # If no exception was raised but an error was logged, count it as a failure
+    if script_failed_exception is None and error_watcher.has_errors:
+        script_failed_exception = Exception("Script logged an error (captured by ErrorWatcher)")
 
     # return env_changed, output, script_failed_exception
     return env_changed, output, script_failed_exception, assertion_error
