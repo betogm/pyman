@@ -1,0 +1,20 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [0.2.0] - 2025-11-26
+
+### Added
+- **Structured JSON Reporting**: `pyman` now generates a `report_COLLECTION_TIMESTAMP.json` file containing detailed execution data (requests, responses, tests, errors).
+- **Robust Error Detection**: Failures are now detected based on the internal execution state, independent of console log messages.
+- **Improved HTML Report**: The HTML reporter now consumes the JSON report for 100% accuracy, falling back to log parsing only if necessary.
+- **ErrorWatcherHandler**: A new internal logging handler to detect `ERROR` level logs even if exceptions are swallowed.
+
+### Fixed
+- Fixed an issue where swallowed exceptions in test scripts prevented failures from being reported in the summary and HTML report.
+- Fixed `ColorFormatter` to correctly highlight custom failure messages in the console.
+
+## [0.1.0] - 2025-11-18
+
+### Added
+- Initial release.
