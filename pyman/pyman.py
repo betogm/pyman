@@ -168,8 +168,8 @@ def handle_run_command(args):
                     report_file_path = os.path.join(report_dir, report_filename)
 
                     # Call reporter functions
-                    parsed_collection_name, parsed_collection_desc, executions, summary, total_time = parse_log_file(log_file_path)
-                    generate_html_report(parsed_collection_name, parsed_collection_desc, executions, summary, total_time, report_file_path)
+                    parsed_collection_name, parsed_collection_desc, parsed_collection_root, executions, summary, total_time = parse_log_file(log_file_path)
+                    generate_html_report(parsed_collection_name, parsed_collection_desc, parsed_collection_root, executions, summary, total_time, report_file_path)
                 
                 except Exception as e:
                     log.error(f"Failed to generate HTML report: {e}", exc_info=True)

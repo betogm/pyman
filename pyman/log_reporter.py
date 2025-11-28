@@ -107,10 +107,10 @@ HTML_TEMPLATE = """
         summary {{
             padding: 15px;
             cursor: pointer;
-            display: grid;
-            grid-template-columns: 80px 1fr 120px 100px;
-            align-items: center;
-            gap: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 5px;
             background-color: #fdfdfd;
         }}
         summary::-webkit-details-marker {{ display: none; }}
@@ -130,6 +130,30 @@ HTML_TEMPLATE = """
         .method-PATCH {{ background-color: #8e44ad; }}
         .method-NA {{ background-color: #7f8c8d; }} /* Style for N/A method */
 
+        .summary-header {{
+            width: 100%;
+            margin-bottom: 8px;
+        }}
+        .script-filename {{
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #2c3e50;
+            display: block;
+            margin-bottom: 2px;
+        }}
+        .script-path {{
+            font-size: 0.85em;
+            color: #7f8c8d;
+            font-family: monospace;
+            display: block;
+            word-break: break-all;
+        }}
+        .summary-details {{
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }}
+
         .req-url {{
             color: #555;
             font-family: monospace;
@@ -139,13 +163,13 @@ HTML_TEMPLATE = """
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 400px;
-            display: inline-block;
-            vertical-align: middle;
+            flex-grow: 1;
+            min-width: 0;
         }}
 
-        .item-name {{ font-weight: 500; color: #34495e; word-break: break-all; }}
-        .response-code, .response-time {{ text-align: right; color: #7f8c8d; }}
+        .item-name {{ font-weight: 500; color: #34495e; word-break: break-all; display: none; }}
+        .response-info {{ margin-left: auto; white-space: nowrap; }}
+        .response-code, .response-time {{ text-align: right; color: #7f8c8d; margin-left: 10px; }}
         
         .details-content {{
             padding: 0 20px 20px;
@@ -221,8 +245,7 @@ HTML_TEMPLATE = """
              font-family: monospace;
              white-space: pre-wrap;
              word-break: break-all;
-        }}
-    </style>
+        }}    </style>
 </head>
 <body>
     <div class="container">
@@ -323,10 +346,12 @@ def parse_log_file(log_path):
     traceback_re = re.compile(r"^\s+.*|Traceback.*")
     collection_name_re = re.compile(r"INFO - Collection Name: (.*)")
     collection_desc_re = re.compile(r"INFO - Collection Description: (.*)")
+    collection_root_re = re.compile(r"INFO - Starting execution. Collection root: (.*)")
     summary_re = re.compile(r"Summary: (\d+) total.*?(\d+) success.*?(\d+) warnings.*?(\d+) failure")
 
     collection_name = "Unknown"
     collection_description = ""
+    collection_root = None
     summary = {'total': 0, 'success': 0, 'warnings': 0, 'failure': 0}
     start_time = None
     end_time = None
@@ -374,6 +399,10 @@ def parse_log_file(log_path):
                 match = collection_desc_re.search(line)
                 if match:
                     collection_description = match.group(1).strip()
+                    continue
+                match = collection_root_re.search(line)
+                if match:
+                    collection_root = match.group(1).strip()
                     continue
                 continue
 
@@ -566,10 +595,10 @@ def parse_log_file(log_path):
                 pass
 
     total_time = (end_time - start_time).total_seconds() if start_time and end_time else 0
-    return collection_name, collection_description, executions, summary, total_time
+    return collection_name, collection_description, collection_root, executions, summary, total_time
 
 
-def generate_html_report(collection_name, collection_description, executions, summary, total_time, output_path):
+def generate_html_report(collection_name, collection_description, collection_root, executions, summary, total_time, output_path):
     """Generates the HTML file from the parsed data."""
     executions_html = ""
     total_tests = 0
@@ -640,18 +669,31 @@ def generate_html_report(collection_name, collection_description, executions, su
         resp_headers_html = f"<pre class='pre-header'>{resp_headers_formatted}</pre>" if resp_headers_formatted != 'N/A' else "<pre>N/A</pre>"
         resp_body_html = f"<pre>{html.escape(exec_data.get('resp_body', 'N/A'))}</pre>" if exec_data.get('resp_body') else "<pre>No response body.</pre>"
 
-        # Determine script name and URL for display
-        script_name = os.path.basename(exec_data.get('file_path', '')) or exec_data.get('name', 'Unnamed Request')
+        # Determine script name and relative path
+        file_path = exec_data.get('file_path', '')
+        script_filename = os.path.basename(file_path) or exec_data.get('name', 'Unnamed Request')
+        
+        relative_path = file_path
+        if collection_root and file_path.startswith(collection_root):
+             relative_path = os.path.relpath(file_path, collection_root)
+        
         display_url = exec_data.get('url', 'N/A')
 
         executions_html += f"""
         <details class="execution-item {status_class}">
             <summary>
-                <span class="method method-{exec_data.get('method','NA').replace('/', '')}">{html.escape(exec_data.get('method','N/A'))}</span>
-                <span class="req-url">{html.escape(display_url)}</span>
-                <span class="item-name">{html.escape(script_name)}</span>
-                <span class="response-code">{final_status_code} {html.escape(final_status_text)}</span>
-                <span class="response-time">{req_time_ms} ms</span>
+                <div class="summary-header">
+                    <span class="script-filename">{html.escape(script_filename)}</span>
+                    <span class="script-path">{html.escape(relative_path)}</span>
+                </div>
+                <div class="summary-details">
+                    <span class="method method-{exec_data.get('method','NA').replace('/', '')}">{html.escape(exec_data.get('method','N/A'))}</span>
+                    <span class="req-url">{html.escape(display_url)}</span>
+                    <span class="response-info">
+                        <span class="response-code">{final_status_code} {html.escape(final_status_text)}</span>
+                        <span class="response-time">{req_time_ms} ms</span>
+                    </span>
+                </div>
             </summary>
             <div class="details-content">
                 <h4>Executed Tests</h4>
@@ -714,6 +756,7 @@ def load_json_report(json_path):
     return (
         data.get('collection_name', 'Unknown'),
         data.get('collection_description', ''),
+        data.get('collection_root', None),
         data.get('executions', []),
         data.get('summary', {}),
         data.get('total_time', 0)
@@ -738,12 +781,9 @@ if __name__ == "__main__":
     try:
         if args.input_file.endswith('.json'):
             print(f"Loading data from JSON report: {args.input_file}")
-            collection_name, collection_description, executions, summary, total_time = load_json_report(args.input_file)
+            collection_name, collection_description, collection_root, executions, summary, total_time = load_json_report(args.input_file)
         else:
             # It's a log file. Check if a corresponding JSON exists.
-            # Assuming naming convention: run_COLLECTION_TIMESTAMP.log -> report_COLLECTION_TIMESTAMP.json
-            # Or just look for any .json in the same dir with the same timestamp?
-            # Let's try to infer the json path.
             log_dir = os.path.dirname(args.input_file)
             log_filename = os.path.basename(args.input_file)
             
@@ -758,12 +798,12 @@ if __name__ == "__main__":
             
             if json_path:
                 print(f"Found corresponding JSON report: {json_path}. Using it instead of parsing log.")
-                collection_name, collection_description, executions, summary, total_time = load_json_report(json_path)
+                collection_name, collection_description, collection_root, executions, summary, total_time = load_json_report(json_path)
             else:
                 print(f"Parsing log file: {args.input_file}")
-                collection_name, collection_description, executions, summary, total_time = parse_log_file(args.input_file)
+                collection_name, collection_description, collection_root, executions, summary, total_time = parse_log_file(args.input_file)
 
-        generate_html_report(collection_name, collection_description, executions, summary, total_time, output_file)
+        generate_html_report(collection_name, collection_description, collection_root, executions, summary, total_time, output_file)
     except Exception as e:
         print(f"An error occurred while processing the input or generating the report: {e}")
         import traceback

@@ -590,6 +590,7 @@ def run_collection(target_path, collection_root, request_files, log, pm):
     report_data = {
         'collection_name': get_collection_name(collection_root),
         'collection_description': get_collection_description(collection_root),
+        'collection_root': collection_root,
         'execution_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         'executions': [],
         'summary': {}
