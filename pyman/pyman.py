@@ -12,6 +12,7 @@ import sys
 import logging # Required to inspect handlers
 
 try:
+    from . import __version__
     from .core_logic import (
         setup_logging,
         run_collection,
@@ -26,7 +27,12 @@ try:
     from .postman_importer import main as postman_importer_main
 except ImportError as e:
     print(f"Import error: {e}")
-    print("Ensure that core_logic.py, pyman_helpers.py, log_reporter.py, and postman_importer.py are in the same 'app' directory.")
+    if "attempted relative import" in str(e):
+        print("\n❌ It seems you are trying to run the script directly.")
+        print("👉 Please run it as a module from the project root directory:")
+        print("   python -m pyman.pyman --help")
+    else:
+        print("Ensure that core_logic.py, pyman_helpers.py, log_reporter.py, and postman_importer.py are in the same directory.")
     sys.exit(1)
 
 
@@ -201,7 +207,16 @@ def handle_import_command(args):
         sys.argv = original_argv # Restore original argv
 
 def main():
-    parser = argparse.ArgumentParser(description="PyMan - A CLI HTTP request executor and Postman importer.")
+    description = (
+        f"PyMan v{__version__}\n"
+        "License: GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)\n"
+        "Author: Huberto Gastal Mayer (hubertogm@gmail.com)\n\n"
+        "PyMan - A CLI HTTP request executor and Postman importer."
+    )
+    parser = argparse.ArgumentParser(
+        description=description,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
 
     # --- 'run' command ---

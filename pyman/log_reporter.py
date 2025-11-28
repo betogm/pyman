@@ -130,6 +130,20 @@ HTML_TEMPLATE = """
         .method-PATCH {{ background-color: #8e44ad; }}
         .method-NA {{ background-color: #7f8c8d; }} /* Style for N/A method */
 
+        .req-url {{
+            color: #555;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin-left: 10px;
+            margin-right: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 400px;
+            display: inline-block;
+            vertical-align: middle;
+        }}
+
         .item-name {{ font-weight: 500; color: #34495e; word-break: break-all; }}
         .response-code, .response-time {{ text-align: right; color: #7f8c8d; }}
         
@@ -292,7 +306,11 @@ def parse_log_file(log_path):
 
     # Regex patterns
     req_file_re = re.compile(r"Processing request file: (.*)")
-    req_dispatch_re = re.compile(r"Dispatching (GET|POST|PUT|DELETE|PATCH) to: (.*)")
+    req_dispatch_re = re.compile(r"Dispatching (GET|POST|PUT|DELETE|PATCH) request")
+    req_original_url_re = re.compile(r"\s*Original URL: (.*)")
+    req_resolved_url_re = re.compile(r"\s*Resolved URL: (.*)")
+    # Backward compatibility for old logs
+    req_dispatch_old_re = re.compile(r"Dispatching (GET|POST|PUT|DELETE|PATCH) to: (.*)")
     req_headers_start_re = re.compile(r"DEBUG - HEADERS: (.*)")
     req_body_start_re = re.compile(r"DEBUG - DATA: (.*)")
     resp_status_re = re.compile(r"INFO - STATUS: (\d+)")
@@ -458,7 +476,24 @@ def parse_log_file(log_path):
             match = req_dispatch_re.search(line)
             if match:
                 current_execution['method'] = match.group(1)
+                continue
+
+            match = req_original_url_re.search(line)
+            if match:
+                current_execution['original_url'] = match.group(1).strip()
+                continue
+
+            match = req_resolved_url_re.search(line)
+            if match:
+                current_execution['url'] = match.group(1).strip()
+                continue
+
+            # Backward compatibility
+            match = req_dispatch_old_re.search(line)
+            if match:
+                current_execution['method'] = match.group(1)
                 current_execution['url'] = match.group(2).strip()
+                current_execution['original_url'] = 'N/A' # Not available in old logs
                 continue
 
             match = req_headers_start_re.search(line)
@@ -605,11 +640,16 @@ def generate_html_report(collection_name, collection_description, executions, su
         resp_headers_html = f"<pre class='pre-header'>{resp_headers_formatted}</pre>" if resp_headers_formatted != 'N/A' else "<pre>N/A</pre>"
         resp_body_html = f"<pre>{html.escape(exec_data.get('resp_body', 'N/A'))}</pre>" if exec_data.get('resp_body') else "<pre>No response body.</pre>"
 
+        # Determine script name and URL for display
+        script_name = os.path.basename(exec_data.get('file_path', '')) or exec_data.get('name', 'Unnamed Request')
+        display_url = exec_data.get('url', 'N/A')
+
         executions_html += f"""
         <details class="execution-item {status_class}">
             <summary>
                 <span class="method method-{exec_data.get('method','NA').replace('/', '')}">{html.escape(exec_data.get('method','N/A'))}</span>
-                <span class="item-name">{html.escape(exec_data.get('name','Unnamed Request'))}</span>
+                <span class="req-url">{html.escape(display_url)}</span>
+                <span class="item-name">{html.escape(script_name)}</span>
                 <span class="response-code">{final_status_code} {html.escape(final_status_text)}</span>
                 <span class="response-time">{req_time_ms} ms</span>
             </summary>
@@ -622,7 +662,9 @@ def generate_html_report(collection_name, collection_description, executions, su
                 <div class="details-grid">
                     <div class="request-details">
                         <h4>Request Data</h4>
-                        <h5>URL</h5>
+                        <h5>Original URL</h5>
+                        <pre>{html.escape(exec_data.get('original_url', 'N/A'))}</pre>
+                        <h5>Resolved URL</h5>
                         <pre>{html.escape(exec_data.get('url', 'N/A'))}</pre>
                         <h5>Headers</h5>
                         {req_headers_html}

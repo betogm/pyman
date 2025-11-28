@@ -476,7 +476,10 @@ def execute_request(request_data, current_vars, pm_instance, log, has_pos_script
     response = None
     start_time_req = time.time()
     try:
-        log.info(f"Dispatching {method} to: {url}")
+        log.info(f"Dispatching {method} request")
+        log.info(f"  Original URL: {request_data['url']}")
+        log.info(f"  Resolved URL: {url}")
+        
         log.debug(f"HEADERS: {headers}")
         if data: log.debug(f"DATA: {data if isinstance(data, dict) else data[:200]}") # Log dict or first 200 bytes
         if json_payload: log.debug(f"JSON: {json.dumps(json_payload, indent=2, ensure_ascii=False)}")
@@ -546,6 +549,7 @@ def execute_request(request_data, current_vars, pm_instance, log, has_pos_script
 
     request_details = {
         'method': method,
+        'original_url': request_data['url'],
         'url': url,
         'headers': headers,
         'body': data if data else (json_payload if json_payload else None),

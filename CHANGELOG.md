@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2025-11-27
+
+### Added
+- **Enhanced URL Logging**: Logs now explicitly show both the "Original URL" (with `{{variables}}`) and the "Resolved URL".
+- **Improved HTML Report**:
+    - Request titles now display the script filename for easier identification.
+    - The resolved URL is now displayed in the request summary line.
+    - Both Original and Resolved URLs are included in the request details section.
+    - Improved CSS styling for URL display.
+
 ## [0.2.0] - 2025-11-26
 
 ### Added
