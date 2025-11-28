@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
     - The resolved URL is now displayed in the request summary line.
     - Both Original and Resolved URLs are included in the request details section.
     - Improved CSS styling for URL display.
+    - **Layout Overhaul**: Redesigned the request summary to prominently display the script filename and its relative path.
+    - **Copy Functionality**: Added copy-to-clipboard buttons for the script filename, full path, and request URL.
 
 ## [0.2.0] - 2025-11-26
 
