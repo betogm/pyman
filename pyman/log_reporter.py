@@ -245,7 +245,24 @@ HTML_TEMPLATE = """
              font-family: monospace;
              white-space: pre-wrap;
              word-break: break-all;
-        }}    </style>
+        }}
+        .copy-icon {{
+            cursor: pointer;
+            margin-left: 8px;
+            color: #bdc3c7;
+            font-size: 0.9em;
+            vertical-align: middle;
+            transition: color 0.2s;
+        }}
+        .copy-icon:hover {{
+            color: #3498db;
+        }}
+        .copy-icon svg {{
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }}
+    </style>
 </head>
 <body>
     <div class="container">
@@ -313,6 +330,29 @@ HTML_TEMPLATE = """
                         item.style.display = 'none';
                     }}
                 }}
+            }});
+        }}
+
+        function copyToClipboard(text, event) {{
+            event.stopPropagation(); // Prevent details expansion
+            event.preventDefault();
+            
+            navigator.clipboard.writeText(text).then(function() {{
+                // Optional: Show a tooltip or change icon temporarily
+                console.log('Copied to clipboard: ' + text);
+            }}, function(err) {{
+                console.error('Could not copy text: ', err);
+                // Fallback for older browsers
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {{
+                    document.execCommand('copy');
+                }} catch (err) {{
+                    console.error('Fallback: Oops, unable to copy', err);
+                }}
+                document.body.removeChild(textArea);
             }});
         }}
     </script>
@@ -604,6 +644,9 @@ def generate_html_report(collection_name, collection_description, collection_roo
     total_tests = 0
     passed_tests_count = 0
 
+    # SVG icon for copy
+    copy_icon_svg = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>'
+
     for exec_data in executions:
         # Determine overall status of the request execution
         has_failed_tests = any(t['status'] == 'failed' for t in exec_data['tests'])
@@ -683,12 +726,21 @@ def generate_html_report(collection_name, collection_description, collection_roo
         <details class="execution-item {status_class}">
             <summary>
                 <div class="summary-header">
-                    <span class="script-filename">{html.escape(script_filename)}</span>
-                    <span class="script-path">{html.escape(relative_path)}</span>
+                    <span class="script-filename">
+                        {html.escape(script_filename)}
+                        <span class="copy-icon" onclick="copyToClipboard('{html.escape(script_filename, quote=True)}', event)" title="Copy filename">{copy_icon_svg}</span>
+                    </span>
+                    <span class="script-path">
+                        {html.escape(relative_path)}
+                        <span class="copy-icon" onclick="copyToClipboard('{html.escape(relative_path, quote=True)}', event)" title="Copy path">{copy_icon_svg}</span>
+                    </span>
                 </div>
                 <div class="summary-details">
                     <span class="method method-{exec_data.get('method','NA').replace('/', '')}">{html.escape(exec_data.get('method','N/A'))}</span>
-                    <span class="req-url">{html.escape(display_url)}</span>
+                    <span class="req-url">
+                        {html.escape(display_url)}
+                        <span class="copy-icon" onclick="copyToClipboard('{html.escape(display_url, quote=True)}', event)" title="Copy URL">{copy_icon_svg}</span>
+                    </span>
                     <span class="response-info">
                         <span class="response-code">{final_status_code} {html.escape(final_status_text)}</span>
                         <span class="response-time">{req_time_ms} ms</span>
