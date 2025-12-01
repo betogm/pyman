@@ -83,6 +83,14 @@ Você pode definir ordens de execução personalizadas em um arquivo `config.yam
 pyman run . --collection-order=TestUpload
 ```
 
+### Relatório HTML
+
+Por padrão, o PyMan gera um relatório HTML após a execução. Para desativá-lo, use a flag `--no-report`:
+
+```console
+pyman run . --no-report
+```
+
 ## Configuração da Coleção
 
 Você pode criar um arquivo `config.yaml` no diretório raiz da sua coleção para definir metadados e ordens de execução personalizadas.

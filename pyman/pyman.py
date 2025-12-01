@@ -152,8 +152,8 @@ def handle_run_command(args):
         else:
             print("\nExecution finished, but log file path could not be determined.")
 
-        # 5. Generate report if requested
-        if args.report:
+        # 5. Generate report unless disabled
+        if not args.no_report:
             if log_file_path and os.path.exists(log_file_path):
                 log.info("Generating HTML report...")
                 try:
@@ -226,9 +226,9 @@ def main():
         help="The path to the collection (directory) or request (.yaml) to be executed."
     )
     parser_run.add_argument(
-        '--report',
+        '--no-report',
         action='store_true',
-        help="Automatically generate an HTML report after execution."
+        help="Disable automatic HTML report generation after execution."
     )
     parser_run.add_argument(
         '--collection-order',

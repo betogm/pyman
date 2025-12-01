@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
     - Improved CSS styling for URL display.
     - **Layout Overhaul**: Redesigned the request summary to prominently display the script filename and its relative path.
     - **Copy Functionality**: Added copy-to-clipboard buttons for the script filename, full path, and request URL.
+### Changed
+- **CLI Behavior**: HTML report generation is now **enabled by default**.
+- **New Flag**: Added `--no-report` flag to disable automatic HTML report generation.
 
 ## [0.2.0] - 2025-11-26
 
