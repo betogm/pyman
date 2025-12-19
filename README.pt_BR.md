@@ -119,6 +119,27 @@ COLLECTIONS_ORDER:
 -   `DESCRIPTION`: Uma breve descrição, também exibida no cabeçalho do relatório.
 -   `COLLECTIONS_ORDER`: Um dicionário onde cada chave é o nome de uma ordem de execução personalizada. O valor é uma lista de caminhos para os arquivos de requisição, relativos à raiz da coleção.
 
+## Variáveis de Ambiente
+
+Se sua coleção requer variáveis que não estão definidas no `config.yaml`, o PyMan procurará por um arquivo `.environment-variables` no diretório raiz da coleção.
+
+Este arquivo deve conter pares chave-valor (um por linha) no formato `CHAVE="VALOR"`.
+
+**Arquivo de Modelo (Template):**
+Você pode fornecer um arquivo `.environment-variables-template`. Se o arquivo `.environment-variables` não existir, o PyMan o criará automaticamente copiando o arquivo de modelo.
+
+Para forçar a substituição do `.environment-variables` existente pelo modelo, use a flag `--force-env`:
+
+```bash
+pyman run minha_colecao --force-env
+```
+
+Exemplo de `.environment-variables`:
+```env
+BASE_URL="https://api.exemplo.com"
+API_KEY="chave_secreta"
+```
+
 ## Estrutura de Diretórios
 
 O PyMan espera a seguinte estrutura de arquivos e diretórios:

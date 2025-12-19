@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2025-12-19
+
+### Added
+- **Bruno Support**: New `import-bruno` command to import API collections from [Bruno](https://www.usebruno.com/).
+- **Environment Templates**: 
+    - Automatically initialized `.environment-variables` from `.environment-variables-template` if missing.
+    - Added `--force-env` flag to `run` command to force overwriting `.environment-variables` with the template.
+
 ## [0.3.0] - 2025-11-27
 
 ### Added

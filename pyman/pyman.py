@@ -62,6 +62,28 @@ def handle_run_command(args):
         print(f"Error: Path not found: {target_path}")
         sys.exit(1)
 
+    # 0. Handle Environment Template
+    env_file = os.path.join(collection_root, '.environment-variables')
+    template_file = os.path.join(collection_root, '.environment-variables-template')
+
+    if os.path.exists(template_file):
+        should_copy = False
+        if not os.path.exists(env_file):
+            print(f"Info: .environment-variables not found. Creating from template.")
+            should_copy = True
+        elif args.force_env:
+            print(f"Info: --force-env specified. Overwriting .environment-variables with template.")
+            should_copy = True
+        
+        if should_copy:
+            try:
+                import shutil
+                shutil.copy(template_file, env_file)
+                print(f"Success: Copied {template_file} to {env_file}")
+            except Exception as e:
+                print(f"Error copying environment template: {e}")
+                sys.exit(1)
+
     # 1. Load config and metadata
     collection_config = load_collection_config(collection_root)
     collection_name = get_collection_name(collection_root, config=collection_config)
@@ -253,6 +275,11 @@ def main():
         type=str,
         default='Default',
         help="The name of the execution order from COLLECTIONS_ORDER in config.yaml."
+    )
+    parser_run.add_argument(
+        '--force-env',
+        action='store_true',
+        help="Force overwriting .environment-variables with .environment-variables-template if it exists."
     )
     parser_run.set_defaults(func=handle_run_command)
 

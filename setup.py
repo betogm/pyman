@@ -9,7 +9,7 @@ DESCRIPTION = "PyMan - A CLI tool for executing HTTP request collections defined
 
 setup(
     name="pyman",
-    version="0.3.0",
+    version="0.4.0",
     description=DESCRIPTION,
     long_description=f"{DESCRIPTION}. Criado por {AUTHOR}.",
     author=AUTHOR,
