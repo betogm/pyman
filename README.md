@@ -344,7 +344,18 @@ try:
 except Exception as e:
     log.error(f"Error in POS script: {e}", exc_info=True)
 
+### Importing from Bruno
+
+You can import an existing Bruno collection directory using the `import-bruno` command:
+
+```bash
+pyman import-bruno -c path/to/collection_directory -o my_pyman_collection
 ```
+
+Arguments:
+- `-c` or `--collection`: Path to the Bruno collection directory.
+- `-o` or `--output`: Name of the output directory for the PyMan collection.
+- `--numbered`: (Optional) Add numbering prefix to folders and files (default: "yes").
 
 ## Importing from Postman
 

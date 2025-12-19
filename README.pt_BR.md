@@ -342,7 +342,20 @@ except Exception as e:
 
 ```
 
-## Importando do Postman
+### Importando do Bruno
+
+Você pode importar uma coleção existente do Bruno usando o comando `import-bruno`:
+
+```bash
+pyman import-bruno -c caminho/para/diretorio_colecao -o minha_colecao_pyman
+```
+
+Argumentos:
+- `-c` ou `--collection`: Caminho para o diretório da coleção Bruno.
+- `-o` ou `--output`: Nome do diretório de saída para a coleção PyMan.
+- `--numbered`: (Opcional) Adiciona prefixo numérico a pastas e arquivos (padrão: "yes").
+
+### Importando do Postman
 
 O PyMan possui um comando integrado para converter coleções do Postman v2.1 para o formato PyMan. Este comando converte os arquivos JSON do Postman para a estrutura de diretórios e arquivos YAML do PyMan.
 

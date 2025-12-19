@@ -25,6 +25,7 @@ try:
     from .log_reporter import parse_log_file, generate_html_report
     # Import the Postman importer main function
     from .postman_importer import main as postman_importer_main
+    from .bruno_importer import main as bruno_importer_main
 except ImportError as e:
     print(f"Import error: {e}")
     if "attempted relative import" in str(e):
@@ -206,12 +207,29 @@ def handle_import_command(args):
     finally:
         sys.argv = original_argv # Restore original argv
 
+def handle_import_bruno_command(args):
+    """
+    Handles the logic for the 'import-bruno' command.
+    """
+    importer_args = ['-c', args.collection, '-o', args.output]
+    if args.numbered:
+        importer_args.extend(['--numbered', args.numbered])
+    
+    # Temporarily replace sys.argv to call the importer's main function
+    original_argv = sys.argv
+    sys.argv = ['bruno_importer.py'] + importer_args
+    try:
+        bruno_importer_main()
+    finally:
+        sys.argv = original_argv
+
+
 def main():
     description = (
         f"PyMan v{__version__}\n"
         "License: GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)\n"
         "Author: Huberto Gastal Mayer (hubertogm@gmail.com)\n\n"
-        "PyMan - A CLI HTTP request executor and Postman importer."
+        "PyMan - A CLI HTTP request executor and Postman/Bruno importer."
     )
     parser = argparse.ArgumentParser(
         description=description,
@@ -266,6 +284,22 @@ def main():
         help="Whether to add numbering to files (overrides --numbered)."
     )
     parser_import.set_defaults(func=handle_import_command)
+
+    # --- 'import-bruno' command ---
+    parser_import_bruno = subparsers.add_parser(
+        'import-bruno',
+        help='Import a Bruno collection into the PyMan format.',
+        description='Converts a Bruno collection directory into the PyMan directory and YAML file structure.'
+    )
+    parser_import_bruno.add_argument("-c", "--collection", help="Path to the Bruno collection directory.", required=True)
+    parser_import_bruno.add_argument("-o", "--output", help="Output directory name for the PyMan collection.", required=True)
+    parser_import_bruno.add_argument(
+        "--numbered", 
+        choices=['yes', 'no'], 
+        default='yes', 
+        help="Whether to add numbering to folders and files (default: yes)."
+    )
+    parser_import_bruno.set_defaults(func=handle_import_bruno_command)
 
     args = parser.parse_args()
     args.func(args)
