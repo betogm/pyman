@@ -216,6 +216,10 @@ body: |
 
 ## Pre-Requests (Encadeamento de Requisições)
 
+> [!WARNING]
+> **Esta funcionalidade está atualmente em desenvolvimento / não implementada.**
+> Embora o parser de requisições leia o bloco `pre-requests`, o motor de execução (`core_logic.py`) ainda não dispara essas requisições encadeadas. Elas são atualmente ignoradas.
+
 Você pode encadear requisições usando a chave `pre-requests` no seu arquivo `.yaml`. Isso permite executar uma ou mais requisições antes da principal, o que é útil para cenários como autenticação, onde você precisa obter um token antes de fazer a chamada final.
 
 As requisições listadas em `pre-requests` são executadas em ordem, e cada uma executa seu ciclo completo (incluindo pre e pos scripts).
@@ -270,11 +274,13 @@ Quando `get-resource.yaml` for executado:
 
 ## Scripts (Pre e Pos)
 
-Scripts são arquivos Python que têm acesso a três variáveis globais:
+Os scripts são arquivos Python que têm acesso a variáveis globais injetadas pelo executor:
 
--   `environment_vars` (dict): O dicionário de variáveis de ambiente. Você pode ler (`environment_vars['BASE_URL']`) e escrever (`environment_vars['NOVA_VAR'] = 'valor'`) nele.
--   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()` ou `pm.random_adjective()`.
--   `shared` (objeto): Um objeto especial para compartilhar variáveis e funções entre diferentes scripts dentro da mesma execução de coleção. Isso é particularmente útil para `collection-pre-script.py` configurar dados globais ou funções utilitárias que podem ser acessadas por scripts de pré/pós-requisição individuais.
+-   `environment_vars` (dict): O dicionário de variáveis de ambiente. Você pode ler (`environment_vars['BASE_URL']`) e escrever (`environment_vars['NOVA_VAR'] = 'valor'`) nele. **Alterações feitas nesse dicionário serão salvas automaticamente de volta no arquivo `.environment-variables` após a execução do script.**
+-   `pm` (module): O módulo `pyman_helpers`. Use `pm.random_int()`, `pm.random_adjective()` ou `pm.test()`.
+-   `log` (Logger): O logger da execução atual. Você pode usar `log.info('Mensagem')` ou `log.error('Erro')`.
+-   `pm.test(nome, lambda_func)`: Função de assertiva semelhante ao `pm.test` do Postman. Exemplo: `pm.test("Status code is 200", lambda: assert response.status_code == 200)`.
+-   `shared` (objeto): Um objeto especial para compartilhar variáveis e funções entre diferentes scripts dentro da mesma execução de coleção.
 
     Além dos helpers nativos fornecidos pelo objeto `pm`, você pode importar e usar qualquer biblioteca Python padrão ou de terceiros instalada no seu ambiente, como o `Faker` para gerar dados de teste realistas.
 
