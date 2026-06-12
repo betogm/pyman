@@ -91,6 +91,17 @@ Por padrão, o PyMan gera um relatório HTML após a execução. Para desativá-
 pyman run . --no-report
 ```
 
+### Relatório de Diagnóstico para IA
+
+Por padrão, o PyMan também gera um relatório em Markdown (`report_*_ai.md`) altamente eficiente em termos de consumo de tokens, projetado especificamente para agentes de IA (como assistentes de programação). Ele destaca apenas as requisições com falha, detalha os tracebacks de erros dos scripts de pré/pós-execução, formata cabeçalhos/corpos e fornece links de arquivos absolutos (`file:///`) para que a IA possa abrir e corrigir imediatamente o código ou os testes com falha.
+
+Para desativar a geração deste relatório, use a flag `--no-ai-report`:
+
+```console
+pyman run . --no-ai-report
+```
+
+
 ## Configuração da Coleção
 
 Você pode criar um arquivo `config.yaml` no diretório raiz da sua coleção para definir metadados e ordens de execução personalizadas.

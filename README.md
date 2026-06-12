@@ -91,6 +91,17 @@ By default, PyMan generates an HTML report after execution. To disable it, use t
 pyman run . --no-report
 ```
 
+### AI Diagnosis Report
+
+By default, PyMan also generates a token-efficient Markdown report (`report_*_ai.md`) designed specifically for AI Agents (such as coding assistants). It highlights only the failing requests, details pre/post script tracebacks, formats headers/bodies, and provides absolute `file:///` URLs so the AI can immediately open and fix failing code or tests.
+
+To disable this report, use the `--no-ai-report` flag:
+
+```console
+pyman run . --no-ai-report
+```
+
+
 ## Collection Configuration
 
 You can create a `config.yaml` file in the root directory of your collection to define metadata and custom execution orders.
