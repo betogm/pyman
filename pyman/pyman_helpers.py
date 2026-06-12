@@ -138,4 +138,9 @@ class PyManHelpers:
             return self.random_chars(8) + '-' + self.random_chars(4) + '-' + \
                    self.random_chars(4) + '-' + self.random_chars(12)
 
+    def iso_timestamp(self):
+        """Returns current timestamp in ISO 8601 format."""
+        import datetime
+        return datetime.datetime.now().astimezone().isoformat()
+
 # End of PyManHelpers class

@@ -60,8 +60,12 @@ class ErrorWatcherHandler(logging.Handler):
             self.has_errors = True
 
 class ColorFormatter(logging.Formatter):
-    """Custom formatter to add colors to console log messages."""
+    """Custom formatter to add colors, clean up details and modernize log messages on the console."""
     
+    def __init__(self, collection_root=None):
+        super().__init__()
+        self.collection_root = collection_root
+
     # Define simple formats for console
     FORMATS = {
         logging.DEBUG: logging.Formatter(f'{Color.GREY}DEBUG: %(message)s{Color.RESET}'),
@@ -72,34 +76,150 @@ class ColorFormatter(logging.Formatter):
     }
 
     def format(self, record):
-        # Get the default formatter based on the log level
-        log_fmt = self.FORMATS.get(record.levelno, self.FORMATS[logging.INFO])
+        original_msg = record.msg
+        original_message = record.message if hasattr(record, 'message') else None
         
-        # Call the base formatter
-        message = log_fmt.format(record)
+        try:
+            msg_str = str(record.msg)
+            
+            # 1. Clean up "Processing request file: <path>"
+            if msg_str.startswith("Processing request file:"):
+                path = msg_str.replace("Processing request file:", "").strip()
+                if self.collection_root:
+                    rel_path = os.path.relpath(path, self.collection_root)
+                else:
+                    rel_path = os.path.basename(path)
+                record.msg = f"🧪 {Color.BOLD}Request: {Color.CYAN}{rel_path}{Color.RESET}"
+            
+            # 2. Clean up "Executing script: <path>"
+            elif msg_str.startswith("Executing script:"):
+                path = msg_str.replace("Executing script:", "").strip()
+                if self.collection_root:
+                    rel_path = os.path.relpath(path, self.collection_root)
+                else:
+                    rel_path = os.path.basename(path)
+                record.msg = f"  ⚙️  {Color.GREY}Running hook: {rel_path}{Color.RESET}"
+            
+            # 3. Clean up "Dispatching <method> request"
+            elif msg_str.startswith("Dispatching ") and msg_str.endswith(" request"):
+                method = msg_str.replace("Dispatching ", "").replace(" request", "").strip()
+                method_colors = {
+                    'GET': Color.CYAN,
+                    'POST': Color.GREEN,
+                    'PUT': Color.YELLOW,
+                    'PATCH': "\033[95m", # Purple
+                    'DELETE': Color.RED
+                }
+                m_color = method_colors.get(method, Color.BOLD)
+                record.msg = f"  ▶ {m_color}{method}{Color.RESET} sending request..."
+            
+            # 4. Clean up "  Resolved URL: <url>"
+            elif msg_str.startswith("  Resolved URL:"):
+                url = msg_str.replace("  Resolved URL:", "").strip()
+                record.msg = f"  ↳ {Color.GREY}{url}{Color.RESET}"
+            
+            # 5. Skip "  Original URL: <url>" on console
+            elif msg_str.startswith("  Original URL:"):
+                return ""
+            
+            # 6. Clean up "STATUS: <status>"
+            elif "STATUS:" in msg_str:
+                match = re.search(r"STATUS:\s*(\d+)\s*(.*?)\s*\((\d+.*?)\)", msg_str)
+                if match:
+                    code = int(match.group(1))
+                    text = match.group(2)
+                    duration = match.group(3)
+                    
+                    if code >= 500:
+                        s_color = Color.RED
+                        emoji = "🔴"
+                    elif code >= 400:
+                        s_color = Color.YELLOW
+                        emoji = "🟡"
+                    else:
+                        s_color = Color.GREEN
+                        emoji = "🟢"
+                    
+                    record.msg = f"  {emoji} {s_color}STATUS: {code} {text}{Color.RESET} {Color.GREY}({duration}){Color.RESET}"
 
-        # Apply special colors for INFO messages based on content
-        if record.levelno == logging.INFO:
-            if record.message.strip().startswith("PASSED:"):
-                message = f"{Color.GREEN}{message}{Color.RESET}"
-            elif record.message.startswith("Dispatching"):
-                message = f"{Color.CYAN}{message}{Color.RESET}"
-            elif record.message.startswith("Executing collection") or \
-                 record.message.startswith("Processing request file"):
-                message = f"{Color.BOLD}{message}{Color.RESET}"
-            elif record.message.startswith("Summary:") or \
-                 record.message.startswith("---") or \
-                 record.message.startswith("Execution finished."):
-                message = f"{Color.BOLD}{message}{Color.RESET}"
-            # Default INFO (like 'Environment variables loaded') remains no color
-        
-        # Apply special color for FAILED (which is an ERROR level)
-        elif record.levelno == logging.ERROR:
-             if "FAILED:" in record.message or "FAILURE:" in record.message or "Error executing script" in record.message:
-                 # Make errors bold red
-                 message = f"{Color.BOLD}{Color.RED}ERROR: {record.message}{Color.RESET}"
+            # 7. Clean up test outputs
+            elif "PASSED:" in msg_str:
+                test_name = msg_str.split('PASSED:')[1].strip()
+                if '(' in test_name and ')' in test_name:
+                    test_name = test_name.split(')', 1)[1].strip()
+                record.msg = f"    {Color.GREEN}✓ {test_name}{Color.RESET}"
+                
+            elif "FAILED:" in msg_str:
+                test_name = msg_str.split('FAILED:')[1].strip()
+                if '(' in test_name and ')' in test_name:
+                    test_name = test_name.split(')', 1)[1].strip()
+                record.msg = f"    {Color.RED}✗ {test_name}{Color.RESET}"
+            
+            elif msg_str.startswith("Environment variables were modified"):
+                record.msg = f"    📝 {Color.GREY}Environment updated{Color.RESET}"
+                
+            elif msg_str.startswith("Environment file not found"):
+                record.msg = f"    ⚠️ {Color.YELLOW}Environment file not found, running with system environment.{Color.RESET}"
 
-        return message
+            # 8. Clean up "--------------------------------------------------" lines
+            elif msg_str == "-" * 50:
+                record.msg = f"{Color.GREY}─" * 40 + f"{Color.RESET}"
+
+            # 9. Clean up startup messages
+            elif msg_str.startswith("Starting execution."):
+                record.msg = f"🚀 {Color.BOLD}Starting execution...{Color.RESET}"
+            
+            elif msg_str.startswith("Collection Name:"):
+                name = msg_str.replace("Collection Name:", "").strip()
+                record.msg = f"📦 {Color.BOLD}Collection: {Color.CYAN}{name}{Color.RESET}"
+            
+            elif msg_str.startswith("Collection Description:"):
+                desc = msg_str.replace("Collection Description:", "").strip()
+                record.msg = f"   {Color.GREY}Description: {desc}{Color.RESET}"
+
+            elif msg_str.startswith("Log file will be saved to:"):
+                log_p = msg_str.replace("Log file will be saved to:", "").strip()
+                record.msg = f"📝 {Color.GREY}Log file: {log_p}{Color.RESET}"
+
+            elif msg_str.startswith("Using custom execution order:"):
+                order = msg_str.replace("Using custom execution order:", "").strip()
+                record.msg = f"⚙️  {Color.GREY}Order: {order}{Color.RESET}"
+
+            # 10. Clean up summary
+            elif "Summary:" in msg_str and "total requests" in msg_str:
+                lines = msg_str.split('\n')
+                req_line = lines[0]
+                assert_line = lines[1] if len(lines) > 1 else ""
+                
+                req_match = re.search(r"Summary:\s*(\d+)\s*total requests\s*\|\s*🟢\s*(\d+)\s*success\s*\|\s*⚠️\s*(\d+)\s*warnings\s*\|\s*🔴\s*(\d+)\s*failure", req_line)
+                assert_match = re.search(r"Asserts:\s*(\d+)\s*total\s*\|\s*🟢\s*(\d+)\s*passed\s*\|\s*🔴\s*(\d+)\s*failed", assert_line)
+                
+                box_lines = []
+                box_lines.append(f"{Color.BOLD}┌────────────────────────────────────────────────────────┐{Color.RESET}")
+                box_lines.append(f"{Color.BOLD}│  📊 EXECUTION SUMMARY                                  │{Color.RESET}")
+                box_lines.append(f"{Color.BOLD}├────────────────────────────────────────────────────────┤{Color.RESET}")
+                
+                if req_match:
+                    tot, succ, warn, fail = req_match.groups()
+                    box_lines.append(f"│  {Color.BOLD}Requests:{Color.RESET}  {tot} total | {Color.GREEN}🟢 {succ}{Color.RESET} | {Color.YELLOW}⚠️ {warn}{Color.RESET} | {Color.RED}🔴 {fail}{Color.RESET}   │")
+                
+                if assert_match:
+                    tot_a, pass_a, fail_a = assert_match.groups()
+                    box_lines.append(f"│  {Color.BOLD}Asserts:{Color.RESET}   {tot_a} total | {Color.GREEN}🟢 {pass_a}{Color.RESET} | {Color.RED}🔴 {fail_a}{Color.RESET}    │")
+                
+                box_lines.append(f"{Color.BOLD}└────────────────────────────────────────────────────────┘{Color.RESET}")
+                record.msg = "\n".join(box_lines)
+
+            # Re-generate the message using standard formatter
+            log_fmt = self.FORMATS.get(record.levelno, self.FORMATS[logging.INFO])
+            if hasattr(record, 'message'):
+                delattr(record, 'message')
+            return log_fmt.format(record)
+            
+        finally:
+            record.msg = original_msg
+            if original_message is not None:
+                record.message = original_message
 
 # --- Logging Setup ---
 def setup_logging(collection_root, collection_name="pyman_run", collection_description=None):
@@ -136,7 +256,7 @@ def setup_logging(collection_root, collection_name="pyman_run", collection_descr
     # Console Handler - Logs INFO level and above
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
-    ch.setFormatter(ColorFormatter())
+    ch.setFormatter(ColorFormatter(collection_root))
     log.addHandler(ch)
 
     # Log collection metadata
@@ -262,7 +382,10 @@ def substitute_variables(text, variables, pm_instance, log):
                 # Evaluate the expression
                 # NOTE: This is powerful, but can be a security risk if scripts are not trusted.
                 # For this use case (local scripts), it is acceptable.
-                return str(eval(expression, {'pm': pm_instance}))
+                val = eval(expression, {'pm': pm_instance})
+                if callable(val) and not isinstance(val, type):
+                    val = val()
+                return str(val)
             except Exception as e:
                 log.error(f"Error executing pm helper function '{{{{{expression}}}}}': {e}")
                 return match.group(0) # Keep original on error
