@@ -81,13 +81,13 @@ graph TD
 
 During analysis, the following structural limitations and minor bugs were observed:
 
-### 1. Request Chaining (`pre-requests`) is Unimplemented
+### 1. Request Chaining (`pre-requests`) (Fixed)
 - **Context**: The `README.md` documents request chaining via a `pre-requests` list inside request YAML files:
   ```yaml
   pre-requests:
     - ../auth/login.yaml
   ```
-- **Code Status**: While `request_parser.py` extracts the `pre-requests` field, **`core_logic.py` does not reference or execute these chained requests**. They are silently ignored during execution.
+- **Code Status**: Chained requests are now fully implemented and supported recursively inside `core_logic.py`. Circular dependencies are tracked and prevented via execution path checking. Shared state/variables from chained pre-requests carry over to succeeding requests.
 
 ### 2. Auto-invoking Helper Methods & `pm.iso_timestamp` (Fixed)
 - **Context**: Example requests (`patch-data.yaml` and `post-xml-request.yaml`) use `{{pm.iso_timestamp}}`, and some use methods like `{{pm.random_noun}}` without parentheses.

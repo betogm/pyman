@@ -216,10 +216,6 @@ body: |
 
 ## Pre-Requests (Encadeamento de Requisições)
 
-> [!WARNING]
-> **Esta funcionalidade está atualmente em desenvolvimento / não implementada.**
-> Embora o parser de requisições leia o bloco `pre-requests`, o motor de execução (`core_logic.py`) ainda não dispara essas requisições encadeadas. Elas são atualmente ignoradas.
-
 Você pode encadear requisições usando a chave `pre-requests` no seu arquivo `.yaml`. Isso permite executar uma ou mais requisições antes da principal, o que é útil para cenários como autenticação, onde você precisa obter um token antes de fazer a chamada final.
 
 As requisições listadas em `pre-requests` são executadas em ordem, e cada uma executa seu ciclo completo (incluindo pre e pos scripts).

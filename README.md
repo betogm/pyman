@@ -214,10 +214,6 @@ body: |
 
 ## Pre-Requests (Chaining Requests)
 
-> [!WARNING]
-> **This feature is currently under development / unimplemented.**
-> While the request parser parses the `pre-requests` block, the execution engine (`core_logic.py`) does not yet trigger these chained requests. They are currently ignored.
-
 You can chain requests using the `pre-requests` key in your `.yaml` file. This allows you to execute one or more requests before the main one, which is useful for scenarios like authentication, where you need to obtain a token before making the final call.
 
 The requests listed in `pre-requests` are executed in order, and each one runs its full cycle (including pre and post scripts).

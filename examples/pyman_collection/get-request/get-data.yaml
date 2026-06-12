@@ -1,6 +1,9 @@
 # This is the YAML format for a GET request.
 # It's a simple request to a test endpoint.
 
+pre-requests:
+  - ../other-requests/head-request.yaml
+
 request:
   method: GET
   url: "{{BASE_URL}}/get"

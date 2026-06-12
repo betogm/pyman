@@ -720,7 +720,18 @@ def run_collection(target_path, collection_root, request_files, log, pm):
     }
     start_time_total = time.time()
 
-    for req_file in request_files:
+    def run_req(req_file, visited=None):
+        nonlocal last_response, prev_failed_count
+        
+        if visited is None:
+            visited = set()
+            
+        if req_file in visited:
+            log.warning(f"⚠️ Circular pre-request dependency detected: {req_file}. Skipping execution.")
+            return
+            
+        visited.add(req_file)
+
         log.info("-" * 50)
         log.info(f"Processing request file: {req_file}")
         results['total'] += 1
@@ -753,6 +764,19 @@ def run_collection(target_path, collection_root, request_files, log, pm):
                 log.error(f"Failed to parse request file {req_file}: {e}", exc_info=True)
                 request_success = False
                 execution_record['script_error'] = f"Failed to parse request file: {e}"
+
+            # --- Execute pre-requests first ---
+            if request_success:
+                current_dir = os.path.dirname(req_file)
+                for pre_req_rel in request_data.get('pre-requests', []):
+                    pre_req_path = os.path.abspath(os.path.join(current_dir, pre_req_rel))
+                    if os.path.exists(pre_req_path):
+                        log.info(f"🔗 Executing chained pre-request: {pre_req_rel}")
+                        run_req(pre_req_path, visited.copy())
+                    else:
+                        log.error(f"❌ Chained pre-request file not found: {pre_req_path} (relative: {pre_req_rel})")
+                        request_success = False
+                        execution_record['script_error'] = f"Chained pre-request file not found: {pre_req_rel}"
 
             # --- Pre-script ---
             if request_success:
@@ -815,13 +839,11 @@ def run_collection(target_path, collection_root, request_files, log, pm):
         # --- Collect Tests for this Request ---
         # Passed tests
         for t in pm.passed_tests[start_passed_count:]:
-            # t is "Prefix TestName"
             test_name = t.split('] ', 1)[1] if '] ' in t else t
             execution_record['tests'].append({'name': test_name, 'status': 'passed'})
         
         # Failed tests
         for t in pm.failed_tests[start_failed_count:]:
-            # t is "Prefix TestName: Message"
             if ': ' in t:
                 parts = t.split(': ', 1)
                 full_name = parts[0]
@@ -847,6 +869,9 @@ def run_collection(target_path, collection_root, request_files, log, pm):
             if req_file not in failed_files: # Avoid double counting if script error already failed it
                 failed_files.append(req_file)
         prev_failed_count = len(pm.failed_tests)
+
+    for req_file in request_files:
+        run_req(req_file)
 
     # --- Collection Post-script ---
     collection_pos_script = os.path.join(collection_root, 'collection-pos-script.py')
