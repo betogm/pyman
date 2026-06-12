@@ -801,18 +801,267 @@ def generate_html_report(collection_name, collection_description, collection_roo
         exit(1)
 
 
+def generate_ai_report(collection_name, collection_description, collection_root, executions, summary, total_time, output_path):
+    """Generates a token-efficient Markdown report designed for AI diagnosis."""
+
+    def make_file_url(path):
+        if not path:
+            return ""
+        abs_path = os.path.abspath(path)
+        abs_path = abs_path.replace("\\", "/")
+        if not abs_path.startswith("/"):
+            abs_path = "/" + abs_path
+        return f"file://{abs_path}"
+
+    def format_as_yaml_like(data):
+        if not data:
+            return "None"
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except Exception:
+                return data.strip()
+        if isinstance(data, dict):
+            lines = []
+            for k, v in data.items():
+                lines.append(f"{k}: {v}")
+            return "\n".join(lines)
+        return str(data)
+
+    def format_body(body):
+        if not body:
+            return "None"
+        if isinstance(body, (dict, list)):
+            return json.dumps(body, indent=2, ensure_ascii=False)
+        if isinstance(body, str):
+            try:
+                parsed = json.loads(body)
+                return json.dumps(parsed, indent=2, ensure_ascii=False)
+            except Exception:
+                return body.strip()
+        return str(body)
+
+    total_tests = 0
+    passed_tests_count = 0
+    failures_list = []
+    passed_list = []
+
+    for exec_data in executions:
+        has_failed_tests = any(t.get('status') == 'failed' for t in exec_data.get('tests', []))
+        has_script_error = exec_data.get('script_error') is not None
+        
+        # Count tests
+        if exec_data.get('tests'):
+            total_tests += len(exec_data['tests'])
+            for test in exec_data['tests']:
+                if test.get('status') == 'passed':
+                    passed_tests_count += 1
+
+        is_failed = has_failed_tests or has_script_error
+        
+        # Classify execution
+        if is_failed:
+            failures_list.append(exec_data)
+        else:
+            passed_list.append(exec_data)
+
+    failed_tests_count = total_tests - passed_tests_count
+    
+    collection_root_url = make_file_url(collection_root) if collection_root else "N/A"
+    
+    md_lines = []
+    md_lines.append("# 🤖 PyMan AI Diagnosis Report")
+    md_lines.append(f"**Collection:** {collection_name}")
+    if collection_description:
+        md_lines.append(f"**Description:** {collection_description}")
+    md_lines.append(f"**Root Path:** [{collection_root or 'N/A'}]({collection_root_url})")
+    md_lines.append(f"**Execution Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    total_reqs = len(executions)
+    passed_reqs = len(passed_list)
+    failed_reqs = len(failures_list)
+    md_lines.append(f"**Stats:** {total_reqs} requests | {total_tests} assertions | {passed_tests_count} passed | {failed_tests_count} failed\n")
+
+    md_lines.append("## ❌ Failures & Diagnostics\n")
+    
+    if not failures_list:
+        md_lines.append("No failures detected! All requests executed successfully. 🎉\n")
+    else:
+        for idx, exec_data in enumerate(failures_list, 1):
+            file_path = exec_data.get('file_path', '')
+            rel_path = file_path
+            if collection_root and file_path.startswith(collection_root):
+                rel_path = os.path.relpath(file_path, collection_root)
+            
+            yaml_url = make_file_url(file_path) if file_path else ""
+            yaml_link = f"[{rel_path}]({yaml_url})" if yaml_url else f"`{rel_path or 'N/A'}`"
+            
+            status_code = exec_data.get('status_code', 'N/A')
+            status_text = exec_data.get('status_text', 'N/A')
+            method = exec_data.get('method', 'N/A')
+            url = exec_data.get('url', 'N/A')
+            original_url = exec_data.get('original_url', 'N/A')
+            
+            md_lines.append(f"### {idx}. Request: {yaml_link}")
+            md_lines.append(f"- **Status:** {status_code} {status_text}")
+            md_lines.append(f"- **Method/URL:** `{method}` {url}")
+            if original_url and original_url != 'N/A' and original_url != url:
+                md_lines.append(f"- **Original URL:** {original_url}")
+                
+            # Check scripts
+            if file_path:
+                pre_script_path = file_path.replace('.yaml', '-pre-script.py').replace('.yml', '-pre-script.py')
+                post_script_path = file_path.replace('.yaml', '-pos-script.py').replace('.yml', '-pos-script.py')
+                
+                if os.path.exists(pre_script_path):
+                    pre_rel = os.path.relpath(pre_script_path, collection_root) if collection_root else os.path.basename(pre_script_path)
+                    md_lines.append(f"- **Pre-Script:** [{pre_rel}]({make_file_url(pre_script_path)})")
+                else:
+                    md_lines.append("- **Pre-Script:** None")
+                    
+                if os.path.exists(post_script_path):
+                    post_rel = os.path.relpath(post_script_path, collection_root) if collection_root else os.path.basename(post_script_path)
+                    md_lines.append(f"- **Post-Script:** [{post_rel}]({make_file_url(post_script_path)})")
+                else:
+                    md_lines.append("- **Post-Script:** None")
+            else:
+                md_lines.append("- **Pre-Script:** N/A")
+                md_lines.append("- **Post-Script:** N/A")
+                
+            # Script error
+            script_error = exec_data.get('script_error')
+            if script_error:
+                md_lines.append(f"- **Script Error:**\n  ```python\n  {script_error.strip()}\n  ```")
+                
+            # Failed assertions
+            failed_tests = [t for t in exec_data.get('tests', []) if t.get('status') == 'failed']
+            if failed_tests:
+                md_lines.append("- **Failed Assertions:**")
+                for test in failed_tests:
+                    msg = test.get('message')
+                    msg_str = f": {msg}" if msg else ""
+                    md_lines.append(f"  - ❌ {test.get('name')}{msg_str}")
+                    
+            # Request/Response details
+            req_headers = exec_data.get('req_headers')
+            req_body = exec_data.get('req_body')
+            resp_headers = exec_data.get('resp_headers')
+            resp_body = exec_data.get('resp_body')
+            
+            md_lines.append("- **Request Details:**")
+            md_lines.append(f"  - **Headers:**\n    ```yaml\n    {format_as_yaml_like(req_headers)}\n    ```")
+            if req_body and req_body != 'N/A' and req_body != 'No request body.':
+                md_lines.append(f"  - **Body:**\n    ```json\n    {format_body(req_body)}\n    ```")
+                
+            md_lines.append("- **Response Details:**")
+            if resp_headers:
+                clean_headers = resp_headers
+                if isinstance(clean_headers, str):
+                    clean_headers = re.sub(r'</?strong>', '', clean_headers)
+                md_lines.append(f"  - **Headers:**\n    ```yaml\n    {format_as_yaml_like(clean_headers)}\n    ```")
+            if resp_body and resp_body != 'N/A':
+                md_lines.append(f"  - **Body:**\n    ```json\n    {format_body(resp_body)}\n    ```")
+            
+            md_lines.append("") # Spacer
+
+    md_lines.append("## 🟢 Passed Requests (Omitted details to save tokens)\n")
+    if not passed_list:
+        md_lines.append("No requests passed.\n")
+    else:
+        for exec_data in passed_list:
+            file_path = exec_data.get('file_path', '')
+            rel_path = file_path
+            if collection_root and file_path.startswith(collection_root):
+                rel_path = os.path.relpath(file_path, collection_root)
+            yaml_url = make_file_url(file_path) if file_path else ""
+            yaml_link = f"[{rel_path}]({yaml_url})" if yaml_url else f"`{rel_path or 'N/A'}`"
+            
+            status_code = exec_data.get('status_code', 'N/A')
+            status_text = exec_data.get('status_text', 'N/A')
+            md_lines.append(f"- [x] {yaml_link} ({status_code} {status_text})")
+        md_lines.append("")
+
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(md_lines))
+        print(f"AI diagnosis report successfully generated at: {output_path}")
+    except IOError as e:
+        print(f"Error writing AI report file to {output_path}: {e}")
+        exit(1)
+
+
 def load_json_report(json_path):
     """Loads execution data from a JSON report file."""
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
+        
+    executions = data.get('executions', [])
+    for exe in executions:
+        if 'headers' in exe and 'req_headers' not in exe:
+            h = exe['headers']
+            if isinstance(h, dict):
+                exe['req_headers'] = json.dumps(h, indent=2, ensure_ascii=False)
+            else:
+                exe['req_headers'] = str(h)
+        if 'body' in exe and 'req_body' not in exe:
+            b = exe['body']
+            if isinstance(b, (dict, list)):
+                exe['req_body'] = json.dumps(b, indent=2, ensure_ascii=False)
+            elif b is not None:
+                exe['req_body'] = str(b)
+        if 'resp_headers' in exe:
+            rh = exe['resp_headers']
+            if isinstance(rh, dict):
+                exe['resp_headers'] = "\n".join(
+                    [f"<strong>{k}:</strong> {v}" for k, v in rh.items()]
+                )
+        if 'resp_body' in exe:
+            rb = exe['resp_body']
+            if isinstance(rb, (dict, list)):
+                exe['resp_body'] = json.dumps(rb, indent=2, ensure_ascii=False)
+            elif rb is not None:
+                exe['resp_body'] = str(rb)
+        if 'start_time' in exe and isinstance(exe['start_time'], str):
+            try:
+                exe['start_time'] = datetime.fromisoformat(exe['start_time'])
+            except Exception:
+                pass
+        if 'end_time' in exe and isinstance(exe['end_time'], str):
+            try:
+                exe['end_time'] = datetime.fromisoformat(exe['end_time'])
+            except Exception:
+                pass
+
     return (
         data.get('collection_name', 'Unknown'),
         data.get('collection_description', ''),
         data.get('collection_root', None),
-        data.get('executions', []),
+        executions,
         data.get('summary', {}),
         data.get('total_time', 0)
     )
+
+
+def get_report_data(input_file):
+    """Loads report data from JSON if available, otherwise parses the log file."""
+    if input_file.endswith('.json'):
+        return load_json_report(input_file)
+        
+    log_dir = os.path.dirname(input_file)
+    log_filename = os.path.basename(input_file)
+    
+    json_path = None
+    if log_filename.startswith("run_") and log_filename.endswith(".log"):
+        json_filename = log_filename.replace("run_", "report_", 1).replace(".log", ".json")
+        candidate = os.path.join(log_dir, json_filename)
+        if os.path.exists(candidate):
+            json_path = candidate
+            
+    if json_path:
+        return load_json_report(json_path)
+    else:
+        return parse_log_file(input_file)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Converts a PyMan log file or JSON report into an HTML report.")
@@ -833,28 +1082,17 @@ if __name__ == "__main__":
     try:
         if args.input_file.endswith('.json'):
             print(f"Loading data from JSON report: {args.input_file}")
-            collection_name, collection_description, collection_root, executions, summary, total_time = load_json_report(args.input_file)
         else:
-            # It's a log file. Check if a corresponding JSON exists.
             log_dir = os.path.dirname(args.input_file)
             log_filename = os.path.basename(args.input_file)
-            
-            # Try to find a matching JSON report
-            json_path = None
-            if log_filename.startswith("run_") and log_filename.endswith(".log"):
-                # run_foo_2023... .log -> report_foo_2023... .json
-                json_filename = log_filename.replace("run_", "report_", 1).replace(".log", ".json")
-                candidate = os.path.join(log_dir, json_filename)
-                if os.path.exists(candidate):
-                    json_path = candidate
-            
-            if json_path:
-                print(f"Found corresponding JSON report: {json_path}. Using it instead of parsing log.")
-                collection_name, collection_description, collection_root, executions, summary, total_time = load_json_report(json_path)
+            json_filename = log_filename.replace("run_", "report_", 1).replace(".log", ".json")
+            candidate = os.path.join(log_dir, json_filename)
+            if os.path.exists(candidate):
+                print(f"Found corresponding JSON report: {candidate}. Using it instead of parsing log.")
             else:
                 print(f"Parsing log file: {args.input_file}")
-                collection_name, collection_description, collection_root, executions, summary, total_time = parse_log_file(args.input_file)
-
+                
+        collection_name, collection_description, collection_root, executions, summary, total_time = get_report_data(args.input_file)
         generate_html_report(collection_name, collection_description, collection_root, executions, summary, total_time, output_file)
     except Exception as e:
         print(f"An error occurred while processing the input or generating the report: {e}")

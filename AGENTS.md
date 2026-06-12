@@ -66,6 +66,7 @@ pyman run examples/pyman_collection
 - Logs are created under `examples/pyman_collection/logs/run_*.log`.
 - JSON reports are created under `examples/pyman_collection/logs/report_*.json`.
 - HTML reports are created under `examples/pyman_collection/reports/report_*.html`.
+- AI diagnosis reports (Markdown) are created under `examples/pyman_collection/reports/report_*_ai.md`.
 - Exit code should be `0` if all requests run successfully (no script failures or bad assert statuses).
 
 ---

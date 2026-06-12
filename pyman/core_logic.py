@@ -897,15 +897,24 @@ def run_collection(target_path, collection_root, request_files, log, pm):
 
     # --- Write JSON Report ---
     try:
-        # Use the same timestamp/naming convention as the log file if possible
-        # But here we don't have the log filename easily accessible unless we pass it or reconstruct it.
-        # We'll use a generic name pattern in the logs directory.
+        log_filepath = None
+        for handler in log.handlers:
+            if isinstance(handler, logging.FileHandler):
+                log_filepath = handler.baseFilename
+                break
+        
         log_dir = os.path.join(collection_root, 'logs')
         os.makedirs(log_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_collection_name = re.sub(r'\W+', '_', report_data['collection_name'])
-        report_filename = f"report_{safe_collection_name}_{timestamp}.json"
-        report_path = os.path.join(log_dir, report_filename)
+        
+        if log_filepath:
+            log_filename = os.path.basename(log_filepath)
+            report_filename = log_filename.replace("run_", "report_", 1).replace(".log", ".json")
+            report_path = os.path.join(log_dir, report_filename)
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_collection_name = re.sub(r'\W+', '_', report_data['collection_name'])
+            report_filename = f"report_{safe_collection_name}_{timestamp}.json"
+            report_path = os.path.join(log_dir, report_filename)
         
         with open(report_path, 'w', encoding='utf-8') as f:
             json.dump(report_data, f, indent=2, ensure_ascii=False, default=str)

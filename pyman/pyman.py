@@ -22,7 +22,7 @@ try:
     )
     from .pyman_helpers import PyManHelpers
     # Import reporter functions
-    from .log_reporter import parse_log_file, generate_html_report
+    from .log_reporter import get_report_data, generate_html_report, generate_ai_report
     # Import the Postman importer main function
     from .postman_importer import main as postman_importer_main
     from .bruno_importer import main as bruno_importer_main
@@ -175,28 +175,35 @@ def handle_run_command(args):
         else:
             print("\nExecution finished, but log file path could not be determined.")
 
-        # 5. Generate report unless disabled
-        if not args.no_report:
+        # 5. Generate reports unless disabled
+        if (not args.no_report) or (not args.no_ai_report):
             if log_file_path and os.path.exists(log_file_path):
-                log.info("Generating HTML report...")
                 try:
                     # Create 'reports' directory in collection root
                     report_dir = os.path.join(collection_root, "reports")
                     os.makedirs(report_dir, exist_ok=True)
                     
-                    # Generate new filename
+                    # Generate new filenames
                     log_filename = os.path.basename(log_file_path)
-                    # report_name = "report_collection_name_timestamp.html"
-                    report_filename = "report_" + log_filename.replace("run_", "").replace(".log", ".html")
-                    report_file_path = os.path.join(report_dir, report_filename)
-
-                    # Call reporter functions
-                    parsed_collection_name, parsed_collection_desc, parsed_collection_root, executions, summary, total_time = parse_log_file(log_file_path)
-                    generate_html_report(parsed_collection_name, parsed_collection_desc, parsed_collection_root, executions, summary, total_time, report_file_path)
+                    
+                    # Parse report data (from JSON if available, otherwise fallback to log parsing)
+                    parsed_collection_name, parsed_collection_desc, parsed_collection_root, executions, summary, total_time = get_report_data(log_file_path)
+                    
+                    if not args.no_report:
+                        log.info("Generating HTML report...")
+                        report_filename = "report_" + log_filename.replace("run_", "").replace(".log", ".html")
+                        report_file_path = os.path.join(report_dir, report_filename)
+                        generate_html_report(parsed_collection_name, parsed_collection_desc, parsed_collection_root, executions, summary, total_time, report_file_path)
+                    
+                    if not args.no_ai_report:
+                        log.info("Generating AI diagnosis report...")
+                        ai_report_filename = "report_" + log_filename.replace("run_", "").replace(".log", "_ai.md")
+                        ai_report_file_path = os.path.join(report_dir, ai_report_filename)
+                        generate_ai_report(parsed_collection_name, parsed_collection_desc, parsed_collection_root, executions, summary, total_time, ai_report_file_path)
                 
                 except Exception as e:
-                    log.error(f"Failed to generate HTML report: {e}", exc_info=True)
-                    print(f"Error: Failed to generate HTML report: {e}")
+                    log.error(f"Failed to generate reports: {e}", exc_info=True)
+                    print(f"Error: Failed to generate reports: {e}")
                     sys.exit(1) # Exit with error if report generation fails
             else:
                 log.warning("Report generation skipped: Log file not found.")
@@ -251,11 +258,25 @@ def main():
         f"PyMan v{__version__}\n"
         "License: GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)\n"
         "Author: Huberto Gastal Mayer (hubertogm@gmail.com)\n\n"
-        "PyMan - A CLI HTTP request executor and Postman/Bruno importer."
+        "PyMan - A lightweight, filesystem-based HTTP request runner CLI.\n"
+        "Key Features:\n"
+        "  * Execute HTTP request collections defined in YAML files.\n"
+        "  * Pre-request chaining with shared variables and state.\n"
+        "  * Pre/Post scripts execution support (Python).\n"
+        "  * Environment variables management with automatic templates.\n"
+        "  * Custom execution ordering via config.yaml.\n"
+        "  * Automatic generation of HTML reports, JSON reports, and AI diagnosis reports.\n"
+        "  * Importers for Postman collections (v2.1) and Bruno folders."
     )
     parser = argparse.ArgumentParser(
         description=description,
         formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        '-v', '--version',
+        action='version',
+        version=f"PyMan v{__version__}",
+        help="Show PyMan version and exit."
     )
     subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
 
@@ -269,6 +290,11 @@ def main():
         '--no-report',
         action='store_true',
         help="Disable automatic HTML report generation after execution."
+    )
+    parser_run.add_argument(
+        '--no-ai-report',
+        action='store_true',
+        help="Disable automatic AI diagnosis report (markdown) generation after execution."
     )
     parser_run.add_argument(
         '--collection-order',
